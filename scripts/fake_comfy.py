@@ -75,7 +75,7 @@ def node_catalogue() -> dict:
                     continue
                 entry["input"]["optional"][key] = [spec, {}]
     # nodes the frontends always expect to exist
-    for name in ("CheckpointLoaderSimple", "LoadImage", "LoadVideo", "SaveVideo"):
+    for name in ("CheckpointLoaderSimple", "LoadImage", "LoadVideo", "SaveVideo", "GetVideoComponents"):
         catalogue.setdefault(name, {"input": {"required": {}, "optional": {}}})
     return catalogue
 

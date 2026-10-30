@@ -13,6 +13,13 @@
     },
     "_meta": { "title": "Motion source" }
   },
+  "2b": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": ["2", 0]
+    },
+    "_meta": { "title": "Extract motion frames" }
+  },
   "3": {
     "class_type": "CLIPLoader",
     "inputs": {
@@ -76,7 +83,7 @@
       "negative": ["9", 0],
       "vae": ["4", 0],
       "reference_image": ["1", 0],
-      "pose_video": ["2", 0],
+      "pose_video": ["2b", 0],
       "clip_vision_output": ["6", 0],
       "width": "@width",
       "height": "@height",

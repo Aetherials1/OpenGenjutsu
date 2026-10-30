@@ -19,6 +19,7 @@
   "required_nodes": [
     "LoadImage",
     "LoadVideo",
+    "GetVideoComponents",
     "CLIPLoader",
     "VAELoader",
     "UNETLoader",

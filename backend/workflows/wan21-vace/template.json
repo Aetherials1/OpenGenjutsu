@@ -13,6 +13,13 @@
     },
     "_meta": { "title": "Motion source" }
   },
+  "2b": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": ["2", 0]
+    },
+    "_meta": { "title": "Extract motion frames" }
+  },
   "3": {
     "class_type": "CLIPLoader",
     "inputs": {
@@ -64,7 +71,7 @@
       "length": "@frames",
       "batch_size": 1,
       "strength": 1.0,
-      "control_video": ["2", 0],
+      "control_video": ["2b", 0],
       "reference_image": ["1", 0]
     },
     "_meta": { "title": "VACE conditioning" }
