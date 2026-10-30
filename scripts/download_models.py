@@ -112,9 +112,10 @@ SPECS: dict[str, list[dict]] = {
         },
         {
             "repo": "Kijai/sam2-safetensors",
-            "patterns": ["sam2.1_hiera_base_plus-fp16.safetensors", "sam2.1_hiera_base_plus.safetensors"],
+            "patterns": ["sam2_hiera_base_plus.safetensors", "sam2.1_hiera_base_plus-fp16.safetensors", "sam2.1_hiera_base_plus.safetensors"],
             "dest": "sam2",
-            "label": "SAM2.1 base-plus video segmentation model",
+            "rename": "sam2_hiera_base_plus.safetensors",
+            "label": "SAM2 base-plus video segmentation model",
             "required": True,
         },
     ],

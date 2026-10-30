@@ -134,6 +134,8 @@ for directory in templates:
         check(graph[wan_node]["inputs"]["background_video"] == ["27", 0], f"{directory.name}: blacked-out background guidance")
         check(graph[wan_node]["inputs"]["character_mask"] == ["26", 0], f"{directory.name}: tracked character mask")
         check(graph["24"]["inputs"]["bboxes"] == ["21", 3], f"{directory.name}: SAM2 follows detected subject boxes")
+        check(graph["22"]["inputs"].get("retarget_padding") == 16, f"{directory.name}: pose retarget padding is explicit")
+        check(graph["23"]["inputs"].get("model") == "sam2_hiera_base_plus.safetensors", f"{directory.name}: SAM2 model uses installed filename")
     if directory.name == "wan22-animate-gguf":
         check(graph["12"]["class_type"] == "TrimVideoLatent", "wan22-animate-gguf: trims conditioning latent")
 

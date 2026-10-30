@@ -47,6 +47,7 @@
       "pose_data": ["21", 0],
       "width": "@width",
       "height": "@height",
+      "retarget_padding": 16,
       "body_stick_width": -1,
       "hand_stick_width": -1,
       "draw_head": true
@@ -56,7 +57,7 @@
   "23": {
     "class_type": "DownloadAndLoadSAM2Model",
     "inputs": {
-      "model": "sam2.1_hiera_base_plus-fp16.safetensors",
+      "model": "sam2_hiera_base_plus.safetensors",
       "segmentor": "video",
       "device": "cuda",
       "precision": "fp16"
