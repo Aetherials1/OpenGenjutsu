@@ -218,8 +218,38 @@ time.sleep(2)
 import secrets
 os.environ["OG_TOKEN"] = OG_TOKEN.strip() or secrets.token_urlsafe(12)
 os.environ["OG_ENGINE"] = ENGINE
-print("\\nStarting OpenGenjutsu. Keep this cell output visible for the URL...")
-run([sys.executable, "scripts/colab_setup.py", "serve", "--tunnel"], cwd=root, env=os.environ.copy())
+print("\\nStarting OpenGenjutsu. Waiting for the public link...")
+serve_result = subprocess.run(
+    [sys.executable, "scripts/colab_setup.py", "serve", "--tunnel"],
+    cwd=str(root),
+    env=os.environ.copy(),
+    text=True,
+    capture_output=True,
+)
+if serve_result.stdout:
+    print(serve_result.stdout, end="")
+if serve_result.stderr:
+    print(serve_result.stderr, end="", file=sys.stderr)
+
+# Print the link a second time from the tunnel log so it cannot be hidden by
+# notebook output buffering or a long ComfyUI startup.
+tunnel_log = pathlib.Path("/content/ogenjutsu-logs/tunnel.log")
+if tunnel_log.exists():
+    import re
+    tunnel_text = tunnel_log.read_text(encoding="utf-8", errors="replace")
+    tunnel_urls = re.findall(r"https://[A-Za-z0-9.-]+\\.trycloudflare\\.com", tunnel_text)
+    if tunnel_urls:
+        public_url = tunnel_urls[-1]
+        print("\\n" + "=" * 72)
+        print("OPEN THIS LINK:")
+        print(f"{public_url}/?token={os.environ.get('OG_TOKEN', '')}")
+        print("=" * 72)
+    else:
+        print("\\nNo Cloudflare URL was found. Last tunnel log output:")
+        print(tunnel_text[-4000:])
+
+if serve_result.returncode != 0:
+    raise RuntimeError(f"serve failed with exit code {serve_result.returncode}")
 
 print("\\nRunning readiness check...")
 run([sys.executable, "scripts/colab_setup.py", "doctor"], cwd=root, env=os.environ.copy(), check=False)

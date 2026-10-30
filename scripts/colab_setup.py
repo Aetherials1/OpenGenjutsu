@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -339,19 +340,19 @@ def cmd_tunnel(args: argparse.Namespace) -> int:
             os.kill(int(tunnel_pid), 0)
             if tunnel_log.exists():
                 text = tunnel_log.read_text(encoding="utf-8", errors="replace")
-                for token in text.replace("\r", " ").split():
-                    if token.startswith("https://") and "trycloudflare.com" in token:
-                        tok = os.getenv("OG_TOKEN", "") or (load_pids().get("token") or "")
-                        step("READY")
-                        base_url = token.strip().rstrip("/")
-                        url_with_tok = f"{base_url}/?token={tok}" if tok else base_url
-                        print(f"\n  ================================================================")
-                        print(f"  Tunnel is already active!")
-                        print(f"  Open this URL:  {url_with_tok}")
-                        if tok:
-                            print(f"  Access token:   {tok}")
-                        print(f"  ================================================================\n")
-                        return 0
+                matches = re.findall(r"https://[A-Za-z0-9.-]+\.trycloudflare\.com", text)
+                for public in matches[-1:]:
+                    tok = os.getenv("OG_TOKEN", "") or (load_pids().get("token") or "")
+                    step("READY")
+                    base_url = public.rstrip("/")
+                    url_with_tok = f"{base_url}/?token={tok}" if tok else base_url
+                    print(f"\n  ================================================================")
+                    print(f"  Tunnel is already active!")
+                    print(f"  Open this URL:  {url_with_tok}")
+                    if tok:
+                        print(f"  Access token:   {tok}")
+                    print(f"  ================================================================\n")
+                    return 0
         except ProcessLookupError:
             pass
         except Exception:
@@ -386,16 +387,25 @@ def cmd_tunnel(args: argparse.Namespace) -> int:
     while time.time() - started < 90:
         if tunnel_log.exists():
             text = tunnel_log.read_text(encoding="utf-8", errors="replace")
-            for token in text.replace("\r", " ").split():
-                if token.startswith("https://") and "trycloudflare.com" in token:
-                    public = token.strip()
-                    break
+            matches = re.findall(r"https://[A-Za-z0-9.-]+\.trycloudflare\.com", text)
+            if matches:
+                public = matches[-1]
+                break
         if public:
             break
         time.sleep(1)
 
     if not public:
         log(f"no URL found yet - check {tunnel_log} (the log keeps updating)")
+        if tunnel_log.exists():
+            tail = tunnel_log.read_text(encoding="utf-8", errors="replace")[-4000:]
+            log("cloudflared output:")
+            print(tail, flush=True)
+        try:
+            proc.poll()
+            log(f"cloudflared exited with code {proc.returncode}")
+        except Exception:
+            pass
         return 1
 
     token = os.getenv("OG_TOKEN", "") or (load_pids().get("token") or "")
