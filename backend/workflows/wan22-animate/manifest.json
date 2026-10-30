@@ -1,7 +1,7 @@
 {
   "id": "wan22-animate",
   "label": "Wan 2.2 Animate 14B",
-  "priority": 5,
+  "priority": 30,
   "maturity": "experimental",
   "description": "Pose + face driven character animation: keeps your reference identity while copying the body and facial motion of the driving clip. Highest fidelity, heaviest on VRAM - designed for 14B fp8/GGUF on a T4 with ComfyUI's low-VRAM mode.",
   "notes": "Needs ~10 GB upload + ComfyUI lowvram. Expect 12-25 min for a 4 s 480p clip on a free T4. If preflight reports missing nodes, either update ComfyUI or use the wan21-vace engine.",

@@ -1,7 +1,7 @@
 {
   "id": "wan22-animate-gguf",
   "label": "Wan 2.2 Animate 14B (GGUF Q4)",
-  "priority": 3,
+  "priority": 10,
   "maturity": "experimental",
   "description": "Identical pipeline to Wan 2.2 Animate, but the 14B diffusion model is 4-bit quantised (GGUF) so it fits a 16 GB free Colab T4. Requires the ComfyUI-GGUF custom node.",
   "notes": "Fits ~16 GB VRAM with --lowvram. Slower per step than fp8 but the only way to run Animate on a T4. Install with: python scripts/colab_setup.py comfy --with-gguf, then python scripts/colab_setup.py models --preset animate-q4.",

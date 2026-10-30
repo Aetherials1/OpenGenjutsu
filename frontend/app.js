@@ -260,7 +260,8 @@
       el.engine.append(option);
     }
 
-    const wanted = previous && engineById(previous) ? previous : state.defaultEngine;
+    const previousEngine = previous && engineById(previous);
+    const wanted = previousEngine?.ready ? previous : (state.defaultEngine || ordered.find((e) => e.ready)?.id || 'mock');
     state.engine = wanted;
     el.engine.value = wanted;
     applyEngine(wanted, { silent: true });

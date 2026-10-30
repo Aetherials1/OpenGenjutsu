@@ -89,7 +89,7 @@
       "reference_image": ["1", 0],
       "pose_video": ["2b", 0],
       "face_video": ["2b", 0],
-      "continue_motion_max_frames": 0,
+      "continue_motion_max_frames": 1,
       "video_frame_offset": 0
     },
     "_meta": { "title": "Wan Animate conditioning" }

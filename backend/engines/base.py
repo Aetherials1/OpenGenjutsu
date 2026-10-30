@@ -323,7 +323,23 @@ class TemplateEngine(Engine):
                         f"{ctype} (#{node_id}) has no input '{key}' in this ComfyUI "
                         f"build - template needs updating ({len(problems) + 1})"
                     )
+                else:
+                    val = (node.get("inputs") or {}).get(key)
+                    if isinstance(val, str) and not val.startswith("@") and key in ("unet_name", "ckpt_name"):
+                        input_def = (declared.get("required") or {}).get(key) or (declared.get("optional") or {}).get(key)
+                        if isinstance(input_def, (list, tuple)) and input_def and isinstance(input_def[0], list):
+                            choices = input_def[0]
+                            if choices and val not in choices:
+                                problems.append(
+                                    f"Model '{val}' is not installed in ComfyUI models folder."
+                                )
+                            elif not choices:
+                                problems.append(
+                                    f"No model weights installed for {ctype} (folder is empty in ComfyUI)."
+                                )
 
+        # The ComfyUI model dropdown can be empty when the model is missing.
+        # The explicit filename check above reports that as a useful preflight error.
         models = _mesh_models(self.template)
         if models:
             warnings.append(

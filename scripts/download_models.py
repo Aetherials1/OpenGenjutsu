@@ -91,6 +91,7 @@ SPECS: dict[str, list[dict]] = {
             "dest": "diffusion_models",
             "label": "Wan 2.2 Animate 14B Q4_K_M (GGUF)",
             "quant": "q4",
+            "required": True,
         },
     ],
     "animate2": [

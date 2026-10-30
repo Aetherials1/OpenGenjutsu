@@ -1,7 +1,7 @@
 {
   "id": "wan21-vace",
   "label": "Wan 2.1 VACE 1.3B",
-  "priority": 10,
+  "priority": 20,
   "maturity": "stable",
   "description": "Reference-image identity + motion copied from the driving clip using VACE control. Much lighter than 14B models, so it is the safe default on a free Colab T4.",
   "notes": "Runs fully in ~8-10 GB VRAM with fp16 + ComfyUI lowvram. A 4 s 480p clip takes roughly 2-6 min on a T4 depending on steps.",

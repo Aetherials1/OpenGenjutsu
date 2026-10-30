@@ -1,7 +1,7 @@
 {
   "id": "wan-animate-2",
   "label": "Wan Animate 2 (14B DiT SOTA)",
-  "priority": 15,
+  "priority": 1,
   "maturity": "stable",
   "description": "Alibaba Tongyi Lab's newest state-of-the-art character animation DiT. Directly reads driving video in the transformer for photorealistic full-body motion, stable hands, and face fidelity. Distilled 10-step fast sampler.",
   "notes": "Uses native WanAnimate2ToVideo. Runs in INT8 on free 16 GB T4 (~3-5 min), or ultra-fast on Colab Pro L4 / A100 GPUs (~40-60s).",
