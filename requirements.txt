@@ -1,0 +1,11 @@
+# --- OpenGenjutsu backend (runs on Colab AND locally) ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pydantic>=2.7
+requests>=2.31
+websocket-client>=1.7
+
+# ffmpeg binary fallback for machines that do not have ffmpeg on PATH.
+# Prefer a real ffmpeg/ffprobe install (winget install Gyan.FFmpeg) - see README.
+imageio-ffmpeg>=0.5

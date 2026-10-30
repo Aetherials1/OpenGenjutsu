@@ -1,0 +1,47 @@
+{
+  "id": "wan22-animate",
+  "label": "Wan 2.2 Animate 14B",
+  "priority": 5,
+  "maturity": "experimental",
+  "description": "Pose + face driven character animation: keeps your reference identity while copying the body and facial motion of the driving clip. Highest fidelity, heaviest on VRAM - designed for 14B fp8/GGUF on a T4 with ComfyUI's low-VRAM mode.",
+  "notes": "Needs ~10 GB upload + ComfyUI lowvram. Expect 12-25 min for a 4 s 480p clip on a free T4. If preflight reports missing nodes, either update ComfyUI or use the wan21-vace engine.",
+  "defaults": {
+    "width": 832,
+    "height": 480,
+    "fps": 16,
+    "frames": 65,
+    "steps": 8,
+    "cfg": 1.0,
+    "shift": 8.0
+  },
+  "max_seconds": 6,
+  "min_vram_mb": 22000,
+  "required_nodes": [
+    "LoadImage",
+    "LoadVideo",
+    "CLIPLoader",
+    "VAELoader",
+    "CLIPVisionLoader",
+    "UNETLoader",
+    "CLIPTextEncode",
+    "KSampler",
+    "VAEDecode",
+    "CreateVideo",
+    "SaveVideo",
+    "WanAnimateToVideo"
+  ],
+  "required_models": [
+    "diffusion_models/wan2.2_animate_14B_fp8_e4m3fn.safetensors",
+    "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+    "vae/wan_2.1_vae.safetensors",
+    "clip_vision/clip_vision_h.safetensors"
+  ],
+  "speed_modes": {
+    "lightning": {
+      "label": "Lightning (4-8 steps, no CFG)",
+      "steps": 6,
+      "cfg": 1.0,
+      "lora": "wan2.2_animate_14B_lightning.safetensors"
+    }
+  }
+}
