@@ -9,10 +9,7 @@
   "2": {
     "class_type": "LoadVideo",
     "inputs": {
-      "file": "@motion",
-      "frame_load_cap": "@frames",
-      "skip_first_frames": 0,
-      "select_every_nth": 1
+      "file": "@motion"
     },
     "_meta": { "title": "Motion source" }
   },

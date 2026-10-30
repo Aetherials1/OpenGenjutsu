@@ -303,6 +303,7 @@ class TemplateEngine(Engine):
 
         # Verify every input our template sets actually exists on the installed
         # node - this catches ComfyUI version drift before a render is queued.
+        ignored_inputs = {"frame_load_cap", "skip_first_frames", "select_every_nth"}
         for node_id, node in self.template.items():
             if not isinstance(node, dict):
                 continue
@@ -315,6 +316,8 @@ class TemplateEngine(Engine):
             if not valid:
                 continue
             for key in (node.get("inputs") or {}):
+                if key in ignored_inputs:
+                    continue
                 if key not in valid:
                     problems.append(
                         f"{ctype} (#{node_id}) has no input '{key}' in this ComfyUI "
@@ -370,6 +373,11 @@ class TemplateEngine(Engine):
         try:
             report(0.03, "building workflow")
             graph = inject(self.template, placeholder_values(spec))
+            for n in graph.values():
+                if isinstance(n, dict) and n.get("class_type") == "LoadVideo":
+                    inputs = n.get("inputs", {})
+                    for dep in ("frame_load_cap", "skip_first_frames", "select_every_nth"):
+                        inputs.pop(dep, None)
 
             client_id = new_client_id()
             try:
