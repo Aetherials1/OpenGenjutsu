@@ -333,9 +333,11 @@ def cmd_tunnel(args: argparse.Namespace) -> int:
                     if token.startswith("https://") and "trycloudflare.com" in token:
                         tok = os.getenv("OG_TOKEN", "") or (load_pids().get("token") or "")
                         step("READY")
+                        base_url = token.strip().rstrip("/")
+                        url_with_tok = f"{base_url}/?token={tok}" if tok else base_url
                         print(f"\n  ================================================================")
                         print(f"  Tunnel is already active!")
-                        print(f"  Open this URL:  {token.strip()}")
+                        print(f"  Open this URL:  {url_with_tok}")
                         if tok:
                             print(f"  Access token:   {tok}")
                         print(f"  ================================================================\n")
@@ -388,8 +390,10 @@ def cmd_tunnel(args: argparse.Namespace) -> int:
 
     token = os.getenv("OG_TOKEN", "") or (load_pids().get("token") or "")
     step("READY")
+    base_url = public.rstrip("/")
+    url_with_tok = f"{base_url}/?token={token}" if token else base_url
     print(f"\n  ================================================================")
-    print(f"  Open this URL:  {public}")
+    print(f"  Open this URL:  {url_with_tok}")
     if token:
         print(f"  Access token:   {token}")
     print(f"  ================================================================\n")

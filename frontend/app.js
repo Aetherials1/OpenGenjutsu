@@ -36,9 +36,19 @@
     failed: 'Failed',
   };
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const paramToken = urlParams.get('token') || (window.location.hash.startsWith('#token=') ? window.location.hash.slice(7) : '');
+  if (paramToken) {
+    localStorage.setItem(LS.token, paramToken);
+    try {
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    } catch (_) {}
+  }
+
   const state = {
     base: localStorage.getItem(LS.base) || '',
-    token: localStorage.getItem(LS.token) || '',
+    token: paramToken || localStorage.getItem(LS.token) || '',
     engines: [],
     defaultEngine: null,
     engine: null,

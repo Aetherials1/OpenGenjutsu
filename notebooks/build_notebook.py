@@ -69,8 +69,7 @@ CELLS.append(
   * `animate-q4` — Wan 2.2 Animate 14B GGUF Q4, ≈14 GB, low-VRAM 14B quant
   * `animate` — Wan 2.2 / Animate 14B fp8, needs >22 GB VRAM (for A100/L4 on Colab Pro)
 * `USE_DRIVE` — cache weights in Google Drive (leave False if your Drive is full; weights download straight to Colab's ephemeral disk instead).
-* `OG_TOKEN` — leave empty and a random one is generated. **Keep it.** Anyone with
-  the tunnel URL + token can spend your GPU quota.
+* `OG_TOKEN` — your password for the web UI. Set a fixed word (e.g. "genjutsu77") to stay logged in across restarts, or leave empty for a random one.
 """
     )
 )
@@ -87,7 +86,7 @@ PROJECT_DIR = "/content/OpenGenjutsu"
 
 PRESET     = "animate2"      # "animate2" (New SOTA DiT) | "vace" (fastest, light) | "animate-q4" | "animate"
 USE_DRIVE  = False           # False = use Colab's free ~100 GB disk (leaves your Google Drive untouched!)
-OG_TOKEN   = ""              # empty -> random token, printed below
+OG_TOKEN   = ""              # set a fixed secret (e.g. "genjutsu77") to stay logged in across restarts, or leave empty
 ENGINE     = "auto"          # "auto" | "wan-animate-2" | "wan21-vace" | "wan22-animate-gguf" | "wan22-animate" | "mock"
 
 os.environ["OG_PRESET"] = PRESET
