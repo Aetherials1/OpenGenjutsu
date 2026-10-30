@@ -262,6 +262,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
         return 1
 
     step("starting OpenGenjutsu backend")
+    if sys.platform != "win32":
+        subprocess.run(["fuser", "-k", f"{BACKEND_PORT}/tcp"], capture_output=True)
+        subprocess.run(["pkill", "-9", "-f", "uvicorn"], capture_output=True)
+        time.sleep(1)
+
     env = os.environ.copy()
     env.update(
         {
@@ -457,6 +462,11 @@ def cmd_stop(args: argparse.Namespace) -> int:
             kill_pid(int(pid), name)
     if PID_FILE.exists():
         PID_FILE.unlink()
+
+    if sys.platform != "win32":
+        subprocess.run(["fuser", "-k", f"{BACKEND_PORT}/tcp"], capture_output=True)
+        subprocess.run(["pkill", "-9", "-f", "uvicorn"], capture_output=True)
+        subprocess.run(["pkill", "-9", "-f", "cloudflared"], capture_output=True)
     return 0
 
 
