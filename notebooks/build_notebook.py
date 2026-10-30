@@ -60,7 +60,9 @@ CELLS.append(
         """
 ## 1 · Settings
 
-* `REPO_URL` — git URL for this project. Leave empty if you uploaded a zip.
+* `REPO_URL` — git URL for this project (or leave empty if using uploaded zip).
+* `GH_TOKEN` — optional GitHub Personal Access Token (or add `GH_TOKEN` in Colab Secrets 🔑).
+* `ZIP_PATH` — path for uploaded `OpenGenjutsu.zip` (drag & drop into Colab files panel).
 * `PRESET` — which weights to fetch:
   * `animate2` — **Wan-Animate-2 14B DiT (NEW SOTA)**: Alibaba's newest model, distilled 10-step, direct video-in-transformer motion transfer with stable hands and faces *(recommended)*
   * `vace` — Wan 2.1 VACE 1.3B, ≈11 GB, works everywhere, 2–4 min per 4 s clip *(lightest & fastest)*
@@ -76,8 +78,9 @@ CELLS.append(
 CELLS.append(
     code(
         """
-REPO_URL   = ""                                    # e.g. "https://github.com/you/OpenGenjutsu.git"
-ZIP_PATH   = "/content/OpenGenjutsu.zip"           # used when REPO_URL is empty
+REPO_URL   = "https://github.com/Aetherials1/OpenGenjutsu.git"  # or leave empty if using zip
+GH_TOKEN   = ""                                    # GitHub token if repo is private (or Colab Secrets)
+ZIP_PATH   = "/content/OpenGenjutsu.zip"           # drag & drop OpenGenjutsu.zip into Colab files
 PROJECT_DIR = "/content/OpenGenjutsu"
 
 PRESET     = "animate2"      # "animate2" (New SOTA DiT) | "vace" (fastest, light) | "animate-q4" | "animate"
@@ -130,23 +133,91 @@ CELLS.append(
 import os, pathlib, shutil, subprocess
 
 root = pathlib.Path(PROJECT_DIR)
+zip_path = pathlib.Path(ZIP_PATH)
 
-if os.path.exists(ZIP_PATH) and not REPO_URL:
-    print(f"Unpacking {ZIP_PATH} -> {PROJECT_DIR}...")
-    shutil.rmtree("/content/_og_unzip", ignore_errors=True)
-    shutil.rmtree(PROJECT_DIR, ignore_errors=True)
-    shutil.unpack_archive(ZIP_PATH, "/content/_og_unzip")
-    found = next(p for p in pathlib.Path("/content/_og_unzip").rglob("backend") if (p / "main.py").is_file())
-    shutil.move(str(found.parent), PROJECT_DIR)
-elif not (root / "backend" / "main.py").is_file():
-    if REPO_URL:
-        print(f"Cloning {REPO_URL}...")
-        subprocess.run(["git", "clone", "--depth", "1", REPO_URL, PROJECT_DIR], check=True)
-    else:
-        raise SystemExit("Please upload OpenGenjutsu.zip to " + ZIP_PATH + " or set REPO_URL.")
-else:
+def unpack_zip(src: pathlib.Path, dst: pathlib.Path):
+    print(f"Unpacking {src} -> {dst}...")
+    tmp = pathlib.Path("/content/_og_unzip")
+    shutil.rmtree(tmp, ignore_errors=True)
+    shutil.unpack_archive(str(src), str(tmp))
+    matches = [p for p in tmp.rglob("backend") if (p / "main.py").is_file()]
+    if not matches:
+        raise RuntimeError(f"Could not find backend/main.py inside {src}")
+    source_dir = matches[0].parent
+    dst.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(str(source_dir), str(dst), dirs_exist_ok=True)
+    shutil.rmtree(tmp, ignore_errors=True)
+    print("Project successfully unpacked from zip!")
+
+# Check if already installed
+if (root / "backend" / "main.py").is_file():
+    print(f"OpenGenjutsu already present at {PROJECT_DIR}.")
     if (root / ".git").is_dir():
-        subprocess.run(["git", "-C", PROJECT_DIR, "pull", "--ff-only"], check=False)
+        print("Pulling latest git changes...")
+        subprocess.run(["git", "-C", PROJECT_DIR, "pull", "--ff-only"], capture_output=True)
+else:
+    token = (GH_TOKEN or "").strip()
+    if not token:
+        try:
+            from google.colab import userdata
+            token = (userdata.get("GH_TOKEN") or userdata.get("GITHUB_TOKEN") or "").strip()
+        except Exception:
+            token = ""
+
+    obtained = False
+
+    # Priority 1: If an uploaded zip exists and no GitHub token is given, unpack immediately
+    if zip_path.is_file() and not token:
+        print(f"Found uploaded zip at {zip_path}!")
+        unpack_zip(zip_path, root)
+        obtained = (root / "backend" / "main.py").is_file()
+
+    # Priority 2: Git fetch if REPO_URL is provided and not yet obtained
+    if not obtained and REPO_URL.strip():
+        clone_url = REPO_URL.strip()
+        if token and "github.com" in clone_url and "@" not in clone_url:
+            clone_url = clone_url.replace("https://github.com/", f"https://{token}@github.com/")
+        if not clone_url.endswith(".git") and "github.com" in clone_url:
+            clone_url += ".git"
+
+        print(f"Fetching repository from {REPO_URL}...")
+        root.mkdir(parents=True, exist_ok=True)
+        if not (root / ".git").is_dir():
+            subprocess.run(["git", "init"], cwd=PROJECT_DIR, capture_output=True)
+            subprocess.run(["git", "remote", "add", "origin", clone_url], cwd=PROJECT_DIR, capture_output=True)
+        else:
+            subprocess.run(["git", "remote", "set-url", "origin", clone_url], cwd=PROJECT_DIR, capture_output=True)
+
+        fetch_res = subprocess.run(["git", "fetch", "--depth", "1", "origin"], cwd=PROJECT_DIR, capture_output=True, text=True)
+        if fetch_res.returncode == 0:
+            checkout_res = subprocess.run(["git", "checkout", "-B", "main", "FETCH_HEAD"], cwd=PROJECT_DIR, capture_output=True, text=True)
+            if checkout_res.returncode == 0 and (root / "backend" / "main.py").is_file():
+                print("Cloned and checked out successfully.")
+                obtained = True
+        else:
+            print("Git fetch failed (repository may be private or inaccessible).")
+
+    # Priority 3: Fall back to zip if git failed and zip exists
+    if not obtained and zip_path.is_file():
+        print(f"Falling back to uploaded zip at {zip_path}...")
+        unpack_zip(zip_path, root)
+        obtained = (root / "backend" / "main.py").is_file()
+
+    # If still not obtained, display clear instructions
+    if not (root / "backend" / "main.py").is_file():
+        print("\\n" + "=" * 68)
+        print("❌ Could not obtain OpenGenjutsu source code.")
+        print("\\nFix this with ONE of these simple options:")
+        print("  Option 1 (Easiest - No token needed):")
+        print("    Drag & drop 'OpenGenjutsu.zip' from your computer into the Colab")
+        print(f"    file browser (left panel) at {ZIP_PATH}, then run this cell again.")
+        print("  Option 2 (Using GitHub Personal Access Token):")
+        print("    Set GH_TOKEN = 'ghp_yourToken' in Cell 1, or add a secret")
+        print("    named 'GH_TOKEN' in Colab Secrets (the key icon 🔑 on left).")
+        print("  Option 3 (Make Repository Public):")
+        print("    In GitHub repository Settings -> Change visibility to Public.")
+        print("=" * 68 + "\\n")
+        raise SystemExit("Missing OpenGenjutsu files.")
 
 %cd {PROJECT_DIR}
 print("project ready:", os.getcwd())
