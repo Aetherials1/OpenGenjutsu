@@ -168,6 +168,20 @@
       const busy = health.queue?.active;
       setPill(busy ? 'busy' : 'ok', busy ? 'Rendering' : 'Ready');
       el.pill.title = `${health.gpu?.available ? health.gpu.name : 'No CUDA device'} · v${health.version}`;
+
+      if (el.gpuBadge) {
+        if (health.gpu?.available) {
+          const vramGb = Math.round((health.gpu.vram_total_mb || 0) / 1024);
+          const isPro = (health.gpu.vram_total_mb || 0) >= 18000;
+          el.gpuBadge.hidden = false;
+          el.gpuBadge.textContent = `${gpu} · ${vramGb}GB${isPro ? ' (Pro)' : ''}`;
+          el.gpuBadge.className = `gpu-badge${isPro ? ' gpu-badge--pro' : ''}`;
+          el.gpuBadge.title = `${health.gpu.name} (${health.gpu.vram_total_mb} MB VRAM) · Driver: ${health.gpu.driver || 'N/A'}`;
+        } else {
+          el.gpuBadge.hidden = true;
+        }
+      }
+
       renderHealth(health);
       return health;
     } catch (error) {
@@ -365,9 +379,12 @@
       video.play().catch(() => {});
       video.onloadedmetadata = () => {
         const dur = video.duration;
+        const w = video.videoWidth;
+        const h = video.videoHeight;
         el.metaMotion.hidden = false;
-        el.metaMotion.textContent = `${video.videoWidth}×${video.videoHeight} · ${dur.toFixed(2)}s · ${fmtBytes(file.size)}`;
+        el.metaMotion.textContent = `${w}×${h} · ${dur.toFixed(2)}s · ${fmtBytes(file.size)}`;
         autoSeconds(dur);
+        autoResolution(w, h);
         detectAudio(video, file);
       };
     } else {
@@ -385,8 +402,34 @@
   function autoSeconds(sourceDuration) {
     const max = Number(el.seconds.max) || 8;
     if (state.touched.has('seconds')) return;
-    el.seconds.value = String(clamp(Math.min(sourceDuration, max), 1, max));
+    const dur = clamp(sourceDuration, 1, max);
+    const stepped = Math.round(dur * 2) / 2;
+    el.seconds.value = String(clamp(stepped, 1, max));
     updateSeconds();
+  }
+
+  function autoResolution(sourceWidth, sourceHeight) {
+    if (!sourceWidth || !sourceHeight) return;
+    if (state.touched.has('resolution')) return;
+
+    const aspect = sourceWidth / sourceHeight;
+    const isPro = (state.health?.gpu?.vram_total_mb || 0) >= 18000;
+    let target = isPro ? '1280x720' : '832x480';
+    let label = 'Landscape';
+
+    if (aspect <= 0.8) {
+      target = isPro ? '720x1280' : '480x832';
+      label = 'Portrait';
+    } else if (aspect >= 0.85 && aspect <= 1.15) {
+      target = isPro ? '640x640' : '512x512';
+      label = 'Square';
+    }
+
+    const opt = $$('option', el.resolution).find((o) => o.value === target);
+    if (opt) {
+      el.resolution.value = target;
+      toast(`Auto-matched ${label} resolution (${target})`);
+    }
   }
 
   /** Best-effort audio detection so the toggle can warn before submitting. */
@@ -842,6 +885,7 @@
 
   function cacheEls() {
     el.pill = $('#status-pill');
+    el.gpuBadge = $('#gpu-badge');
     el.toasts = $('#toasts');
     el.health = $('#health-panel');
     el.engine = $('#engine');
@@ -923,6 +967,12 @@
         if (key === 'fps' || key === 'seconds') updateSeconds();
         saveForm();
       });
+      if (node.tagName === 'SELECT') {
+        node.addEventListener('change', () => {
+          state.touched.add(key);
+          saveForm();
+        });
+      }
     }
 
     el.prompt.addEventListener('input', saveForm);

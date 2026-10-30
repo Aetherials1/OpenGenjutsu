@@ -2,8 +2,7 @@
   "1": {
     "class_type": "LoadImage",
     "inputs": {
-      "image": "@char",
-      "upload": "image"
+      "image": "@char"
     },
     "_meta": { "title": "Character reference" }
   },
@@ -40,6 +39,15 @@
     },
     "_meta": { "title": "CLIP vision" }
   },
+  "5b": {
+    "class_type": "CLIPVisionEncode",
+    "inputs": {
+      "clip_vision": ["5", 0],
+      "image": ["1", 0],
+      "crop": "center"
+    },
+    "_meta": { "title": "Encode reference image" }
+  },
   "6": {
     "class_type": "UNETLoader",
     "inputs": {
@@ -74,11 +82,10 @@
       "height": "@height",
       "length": "@frames",
       "batch_size": 1,
-      "clip_vision_output": ["5", 0],
+      "clip_vision_output": ["5b", 0],
       "reference_image": ["1", 0],
       "pose_video": ["2", 0],
-      "face_video": ["2", 0],
-      "mode": "animate"
+      "face_video": ["2", 0]
     },
     "_meta": { "title": "Wan Animate conditioning" }
   },

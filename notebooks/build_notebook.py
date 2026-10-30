@@ -62,9 +62,10 @@ CELLS.append(
 
 * `REPO_URL` — git URL for this project. Leave empty if you uploaded a zip.
 * `PRESET` — which weights to fetch:
-  * `vace` — Wan 2.1 VACE 1.3B, ≈11 GB, works everywhere, 2–6 min per 4 s clip *(safe default)*
-  * `animate-q4` — Wan 2.2 Animate 14B GGUF Q4, ≈14 GB, best identity/motion, 10–25 min *(best quality on a T4)*
-  * `animate` — same 14B in fp8, needs >22 GB VRAM — for A100/L4, not a free T4
+  * `animate2` — **Wan-Animate-2 14B DiT (NEW SOTA)**: Alibaba's newest model, distilled 10-step, direct video-in-transformer motion transfer with stable hands and faces *(recommended)*
+  * `vace` — Wan 2.1 VACE 1.3B, ≈11 GB, works everywhere, 2–4 min per 4 s clip *(lightest & fastest)*
+  * `animate-q4` — Wan 2.2 Animate 14B GGUF Q4, ≈14 GB, low-VRAM 14B quant
+  * `animate` — Wan 2.2 / Animate 14B fp8, needs >22 GB VRAM (for A100/L4 on Colab Pro)
 * `USE_DRIVE` — cache weights in Google Drive (leave False if your Drive is full; weights download straight to Colab's ephemeral disk instead).
 * `OG_TOKEN` — leave empty and a random one is generated. **Keep it.** Anyone with
   the tunnel URL + token can spend your GPU quota.
@@ -79,10 +80,10 @@ REPO_URL   = ""                                    # e.g. "https://github.com/yo
 ZIP_PATH   = "/content/OpenGenjutsu.zip"           # used when REPO_URL is empty
 PROJECT_DIR = "/content/OpenGenjutsu"
 
-PRESET     = "vace"          # "vace" | "animate-q4" | "animate"
+PRESET     = "animate2"      # "animate2" (New SOTA DiT) | "vace" (fastest, light) | "animate-q4" | "animate"
 USE_DRIVE  = False           # False = use Colab's free ~100 GB disk (leaves your Google Drive untouched!)
 OG_TOKEN   = ""              # empty -> random token, printed below
-ENGINE     = "auto"          # "auto" | "wan21-vace" | "wan22-animate-gguf" | "wan22-animate" | "mock"
+ENGINE     = "auto"          # "auto" | "wan-animate-2" | "wan21-vace" | "wan22-animate-gguf" | "wan22-animate" | "mock"
 """
     )
 )
@@ -98,9 +99,14 @@ CELLS.append(
 
 import torch
 if torch.cuda.is_available():
+    name = torch.cuda.get_device_name(0)
     free, total = torch.cuda.mem_get_info()
-    print(f"torch {torch.__version__} | {torch.cuda.get_device_name(0)} | "
-          f"{total / 1024**3:.1f} GB total, {free / 1024**3:.1f} GB free")
+    total_gb = total / 1024**3
+    print(f"torch {torch.__version__} | {name} | {total_gb:.1f} GB total, {free / 1024**3:.1f} GB free")
+    if total_gb >= 20:
+        print(f"🚀 Colab Pro / High-VRAM GPU detected ({name})! Full-speed inference + 720p HD unlocked.")
+    else:
+        print(f"⚡ Standard GPU detected ({name}). Memory-efficient mode enabled.")
 else:
     print("NO CUDA GPU. Runtime -> Change runtime type -> T4 GPU, then re-run.")
 """
@@ -203,8 +209,7 @@ CELLS.append(
         """
 import os
 
-with_gguf = PRESET == "animate-q4"
-cmd = "python scripts/colab_setup.py comfy" + (" --with-gguf" if with_gguf else "")
+cmd = "python scripts/colab_setup.py comfy --with-gguf"
 print("$", cmd)
 !{cmd}
 """

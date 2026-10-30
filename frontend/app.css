@@ -153,6 +153,26 @@ h1, h2, h3, p, figure, dl, dd, dt { margin: 0; }
 .status[data-state="error"] { color: var(--err); border-color: rgba(239, 115, 112, 0.35); }
 .status[data-state="error"] .status__dot { background: var(--err); }
 
+.gpu-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.gpu-badge--pro {
+  border-color: rgba(125, 149, 255, 0.4);
+  color: #a8b8ff;
+  background: rgba(125, 149, 255, 0.08);
+}
+
 .icon-btn {
   width: 28px;
   height: 28px;

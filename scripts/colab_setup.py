@@ -86,18 +86,29 @@ def wait_for(url: str, label: str, timeout: float = 240.0) -> bool:
     return False
 
 
-def vram_mb() -> int:
+def gpu_details() -> dict:
     try:
         out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            ["nvidia-smi", "--query-gpu=name,memory.total,memory.free", "--format=csv,noheader,nounits"],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             timeout=15,
             check=False,
         )
-        return int(float(out.stdout.decode().strip().splitlines()[0]))
+        lines = out.stdout.decode().strip().splitlines()
+        if lines:
+            parts = [p.strip() for p in lines[0].split(",")]
+            name = parts[0]
+            total = int(float(parts[1]))
+            free = int(float(parts[2])) if len(parts) > 2 else total
+            return {"name": name, "vram_mb": total, "free_mb": free}
     except Exception:
-        return 0
+        pass
+    return {"name": "Unknown", "vram_mb": 0, "free_mb": 0}
+
+
+def vram_mb() -> int:
+    return gpu_details().get("vram_mb", 0)
 
 
 def load_pids() -> dict:
@@ -191,13 +202,20 @@ def cmd_models(args: argparse.Namespace) -> int:
 
 
 def comfy_flags(profile: str) -> list[str]:
-    vram = vram_mb()
+    gpu = gpu_details()
+    vram = gpu.get("vram_mb", 0)
+    name = gpu.get("name", "Unknown GPU")
+    log(f"Detected GPU: {name} ({vram} MB VRAM)")
+
     if profile == "auto":
         profile = "big" if vram >= 18000 else "t4"
-    log(f"GPU VRAM: {vram or '?'} MB -> profile '{profile}'")
+    log(f"ComfyUI profile selected: '{profile}'")
 
     if profile == "big":
-        return ["--preview-method", "none"]
+        log("Pro/High-VRAM GPU detected (>=18 GB, e.g. A100 / L4) -> High performance mode enabled (no --lowvram offloading).")
+        return ["--preview-method", "none", "--highvram"]
+
+    log("Free-tier / Low-VRAM GPU detected (<=16 GB, e.g. T4) -> Memory-safe low-VRAM mode enabled.")
     return ["--lowvram", "--preview-method", "none", "--use-split-cross-attention"]
 
 
@@ -378,7 +396,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     log(f"version        {health.get('version')}")
     log(f"comfyui        {health.get('comfy', {}).get('reachable')} ({health.get('comfy', {}).get('url')})")
     gpu = health.get("gpu") or {}
-    log(f"gpu            {gpu.get('name')} {gpu.get('vram_total_mb')} MB" if gpu.get("available") else "gpu            none")
+    vram = gpu.get("vram_total_mb", 0)
+    log(f"gpu            {gpu.get('name')} {vram} MB" if gpu.get("available") else "gpu            none")
+    if vram >= 18000:
+        log("gpu profile    Pro / High-VRAM (>=18 GB): Wan Animate 2, Wan 2.2 14B, and 720p native unlocked")
+    elif vram >= 7000:
+        log("gpu profile    Standard / T4 (15 GB): Wan Animate 2 (distilled INT8), Wan 2.1 VACE recommended")
     log(f"ffmpeg         {health.get('ffmpeg', {}).get('ok')} {health.get('ffmpeg', {}).get('error') or ''}")
     log(f"engine default {health.get('engine_default')}")
     for engine in health.get("engines") or []:
@@ -414,11 +437,12 @@ def main() -> int:
     p.set_defaults(func=cmd_system)
 
     p = sub.add_parser("comfy", help="install/update ComfyUI")
-    p.add_argument("--with-gguf", action="store_true", help="also install the GGUF loader node")
+    p.add_argument("--with-gguf", dest="with_gguf", action="store_true", default=True, help="install the GGUF loader node (default: enabled)")
+    p.add_argument("--no-gguf", dest="with_gguf", action="store_false", help="skip GGUF loader node")
     p.set_defaults(func=cmd_comfy)
 
     p = sub.add_parser("models", help="download model weights")
-    p.add_argument("--preset", default="vace", choices=["vace", "animate", "animate-q4", "all"])
+    p.add_argument("--preset", default="vace", choices=["vace", "animate", "animate-q4", "animate2", "all"])
     p.add_argument("--quant", default="", choices=["", "fp8", "q4"])
     p.add_argument("--models-root", default=os.getenv("OG_MODELS_DIR", ""))
     p.add_argument("--dry-run", action="store_true")

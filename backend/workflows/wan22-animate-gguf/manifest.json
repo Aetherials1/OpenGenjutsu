@@ -22,6 +22,7 @@
     "CLIPLoader",
     "VAELoader",
     "CLIPVisionLoader",
+    "CLIPVisionEncode",
     "UnetLoaderGGUF",
     "CLIPTextEncode",
     "KSampler",

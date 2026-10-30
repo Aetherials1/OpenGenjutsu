@@ -26,6 +26,7 @@
     </div>
 
     <div class="topbar__right">
+      <span class="gpu-badge" id="gpu-badge" hidden></span>
       <span class="status" id="status-pill" data-state="wait" role="status">
         <i class="status__dot" aria-hidden="true"></i><span>Connecting</span>
       </span>
@@ -126,12 +127,12 @@
             <div class="field">
               <label for="resolution">Resolution</label>
               <select id="resolution">
-                <option value="832x480">832 × 480</option>
-                <option value="1280x720">1280 × 720</option>
-                <option value="480x832">480 × 832</option>
-                <option value="720x1280">720 × 1280</option>
-                <option value="512x512">512 × 512</option>
-                <option value="640x640">640 × 640</option>
+                <option value="832x480">832 × 480 (Landscape)</option>
+                <option value="480x832">480 × 832 (Portrait / Phone)</option>
+                <option value="1280x720">1280 × 720 (720p HD)</option>
+                <option value="720x1280">720 × 1280 (720p Vertical)</option>
+                <option value="512x512">512 × 512 (Square)</option>
+                <option value="640x640">640 × 640 (Square)</option>
               </select>
             </div>
             <div class="field">

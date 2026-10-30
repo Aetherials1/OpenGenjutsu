@@ -93,13 +93,26 @@ SPECS: dict[str, list[dict]] = {
             "quant": "q4",
         },
     ],
+    "animate2": [
+        {
+            "repo": "Comfy-Org/Wan-Animate-2",
+            "patterns": [
+                "diffusion_models/wan_animate_2_int8_convrot.safetensors",
+                "diffusion_models/wan_animate_2_distill_int8_convrot.safetensors",
+                "diffusion_models/*animate_2*.safetensors",
+            ],
+            "dest": "diffusion_models",
+            "label": "Wan Animate 2 (14B DiT SOTA)",
+        },
+    ],
 }
 
 PRESETS = {
     "vace": ["shared", "vace"],
     "animate": ["shared", "animate"],
     "animate-q4": ["shared", "animate-q4"],
-    "all": ["shared", "vace", "animate", "animate-q4"],
+    "animate2": ["shared", "animate2"],
+    "all": ["shared", "vace", "animate2", "animate-q4", "animate"],
 }
 
 
