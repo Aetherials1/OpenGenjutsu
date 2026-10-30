@@ -31,6 +31,15 @@ class EngineError(RuntimeError):
     """A generation could not be completed."""
 
 
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
 def wan_frames(frames: int | float) -> int:
     """Snap a frame count to Wan's requirement of 4n+1 (rounded up, min 5).
 
@@ -191,19 +200,39 @@ def inject(node: Any, values: dict[str, Any]) -> Any:
     return node
 
 
+def _model_basename(value: str) -> str:
+    """Compare ComfyUI model choices without requiring folder prefixes."""
+    return value.replace("\\", "/").rsplit("/", 1)[-1]
+
+
+def _model_choices(input_def: Any) -> list[str] | None:
+    """Extract a model dropdown's choices from old and new object_info schemas."""
+    if not isinstance(input_def, (list, tuple)) or not input_def:
+        return None
+    choices = input_def[0]
+    if not isinstance(choices, (list, tuple)):
+        return None
+    return [str(choice) for choice in choices]
+
+
 def _mesh_models(graph: dict[str, Any]) -> set[str]:
-    """Collect every model filename referenced by loader nodes."""
+    """Collect every static model filename referenced by loader-like nodes."""
     names: set[str] = set()
+    model_keys = {
+        "ckpt_name", "unet_name", "vae_name", "clip_name", "lora_name",
+        "vitpose_model", "yolo_model", "model",
+    }
     for node in graph.values():
         if not isinstance(node, dict):
             continue
         inputs = node.get("inputs") or {}
         ctype = str(node.get("class_type") or "")
-        if "Loader" in ctype or "Load" in ctype:
-            for key in ("ckpt_name", "unet_name", "vae_name", "clip_name", "lora_name"):
-                value = inputs.get(key)
-                if isinstance(value, str) and not value.startswith("@"):
-                    names.add(value)
+        for key, value in inputs.items():
+            if key not in model_keys or not isinstance(value, str) or value.startswith("@"):
+                continue
+            if key == "model" and "SAM2" not in ctype:
+                continue
+            names.add(value)
     return names
 
 
@@ -217,7 +246,8 @@ class TemplateEngine(Engine):
             (directory / "manifest.json").read_text(encoding="utf-8")
         )
         self.template: dict[str, Any] = json.loads(
-            (directory / "template.json").read_text(encoding="utf-8")
+            (directory / "template.json").read_text(encoding="utf-8"),
+            object_pairs_hook=_strict_object,
         )
         self.id = self.manifest.get("id", directory.name)
         self.label = self.manifest.get("label", self.id)
@@ -229,6 +259,10 @@ class TemplateEngine(Engine):
     def defaults(self) -> dict[str, Any]:
         base = super().defaults()
         manifest_defaults = self.manifest.get("defaults") or {}
+        if "model_fps" not in manifest_defaults:
+            base["model_fps"] = 16.0
+        else:
+            base["model_fps"] = float(manifest_defaults["model_fps"])
         base.update(
             {k: v for k, v in manifest_defaults.items() if k != "frames"}
         )
@@ -321,7 +355,7 @@ class TemplateEngine(Engine):
             spec = info.get(str(ctype))
             if not spec:
                 continue  # already reported above when listed in required_nodes
-            declared = spec.get("input") or {}
+            declared = spec.get("input", spec) or {}
             valid = set(declared.get("required") or {}) | set(declared.get("optional") or {})
             if not valid:
                 continue
@@ -335,11 +369,14 @@ class TemplateEngine(Engine):
                     )
                 else:
                     val = (node.get("inputs") or {}).get(key)
-                    if isinstance(val, str) and not val.startswith("@") and key in ("unet_name", "ckpt_name"):
+                    if isinstance(val, str) and not val.startswith("@") and key in {
+                        "unet_name", "ckpt_name", "vae_name", "clip_name", "lora_name",
+                        "vitpose_model", "yolo_model", "model",
+                    }:
                         input_def = (declared.get("required") or {}).get(key) or (declared.get("optional") or {}).get(key)
-                        if isinstance(input_def, (list, tuple)) and input_def and isinstance(input_def[0], list):
-                            choices = input_def[0]
-                            if choices and val not in choices:
+                        choices = _model_choices(input_def)
+                        if choices is not None:
+                            if choices and not any(_model_basename(val) == _model_basename(choice) for choice in choices):
                                 problems.append(
                                     f"Model '{val}' is not installed in ComfyUI models folder."
                                 )

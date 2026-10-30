@@ -28,6 +28,7 @@
     "GrowMaskWithBlur",
     "BlockifyMask",
     "DrawMaskOnImage",
+    "TrimVideoLatent",
     "CLIPLoader",
     "VAELoader",
     "CLIPVisionLoader",
@@ -42,7 +43,7 @@
   ],
   "replacement_mode": "sam2_mix",
   "required_models": [
-    "diffusion_models/wan2.2_animate_14B_fp8_e4m3fn.safetensors",
+    "diffusion_models/Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
     "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
     "vae/wan_2.1_vae.safetensors",
     "clip_vision/clip_vision_h.safetensors",

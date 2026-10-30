@@ -7,6 +7,7 @@ one place (see ``mux_audio``).
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -135,19 +136,34 @@ def run(cmd: list[str], timeout: int = 900) -> str:
 
 
 def _ratio(value: str | None) -> float:
-    if not value or value in {"0/0", "N/A"}:
+    if not value or value in {"0/0", "N/A", "NA"}:
         return 0.0
-    if "/" in value:
-        num, _, den = value.partition("/")
-        try:
-            n, d = float(num), float(den)
-        except ValueError:
-            return 0.0
-        return n / d if d else 0.0
     try:
-        return float(value)
-    except ValueError:
+        if "/" in value:
+            num, _, den = value.partition("/")
+            n, d = float(num), float(den)
+            result = n / d if d else 0.0
+        else:
+            result = float(value)
+        return result if math.isfinite(result) and result >= 0 else 0.0
+    except (TypeError, ValueError, ZeroDivisionError):
         return 0.0
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        result = float(value)
+        return result if math.isfinite(result) else default
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        result = float(value)
+        return int(result) if math.isfinite(result) else default
+    except (TypeError, ValueError, OverflowError):
+        return default
 
 
 def _empty_probe() -> dict[str, Any]:
@@ -185,11 +201,11 @@ def _probe_json(ffprobe: str, path: Path) -> dict[str, Any]:
     info = _empty_probe()
     fmt = data.get("format") or {}
     info["format_name"] = fmt.get("format_name", "")
-    info["size_bytes"] = int(float(fmt.get("size") or path.stat().st_size))
     try:
-        info["duration"] = float(fmt.get("duration") or 0.0)
-    except ValueError:
-        info["duration"] = 0.0
+        info["size_bytes"] = _safe_int(fmt.get("size"), path.stat().st_size)
+    except OSError:
+        info["size_bytes"] = 0
+    info["duration"] = max(0.0, _safe_float(fmt.get("duration")))
 
     for stream in data.get("streams") or []:
         kind = stream.get("codec_type")
@@ -198,25 +214,19 @@ def _probe_json(ffprobe: str, path: Path) -> dict[str, Any]:
             if (stream.get("disposition") or {}).get("attached_pic"):
                 continue
             info["has_video"] = True
-            info["width"] = int(stream.get("width") or 0)
-            info["height"] = int(stream.get("height") or 0)
+            info["width"] = max(0, _safe_int(stream.get("width")))
+            info["height"] = max(0, _safe_int(stream.get("height")))
             info["video_codec"] = stream.get("codec_name", "")
             info["fps"] = _ratio(stream.get("avg_frame_rate")) or _ratio(
                 stream.get("r_frame_rate")
             )
-            try:
-                info["nb_frames"] = int(stream.get("nb_frames") or 0)
-            except ValueError:
-                info["nb_frames"] = 0
+            info["nb_frames"] = max(0, _safe_int(stream.get("nb_frames")))
             if not info["duration"]:
-                try:
-                    info["duration"] = float(stream.get("duration") or 0.0)
-                except ValueError:
-                    pass
+                info["duration"] = max(0.0, _safe_float(stream.get("duration")))
         elif kind == "audio" and not info["has_audio"]:
             info["has_audio"] = True
             info["audio_codec"] = stream.get("codec_name", "")
-            info["audio_channels"] = int(stream.get("channels") or 0)
+            info["audio_channels"] = max(0, _safe_int(stream.get("channels")))
 
     if not info["nb_frames"] and info["duration"] and info["fps"]:
         info["nb_frames"] = int(round(info["duration"] * info["fps"]))
@@ -294,28 +304,35 @@ def extract_audio(source: str | Path, dest: str | Path) -> Path:
     """Extract the first audio stream to a 48kHz stereo WAV."""
     src, out = Path(source), Path(dest)
     out.parent.mkdir(parents=True, exist_ok=True)
-    run(
-        [
-            ffmpeg_exe(),
-            "-y",
-            "-v",
-            "error",
-            "-i",
-            str(src),
-            "-vn",
-            "-map",
-            "0:a:0",
-            "-ac",
-            "2",
-            "-ar",
-            "48000",
-            "-c:a",
-            "pcm_s16le",
-            str(out),
-        ]
-    )
-    if not out.exists() or out.stat().st_size == 0:
-        raise MediaError("audio extraction produced an empty file")
+    try:
+        run(
+            [
+                ffmpeg_exe(),
+                "-y",
+                "-v",
+                "error",
+                "-i",
+                str(src),
+                "-vn",
+                "-map",
+                "0:a:0",
+                "-ac",
+                "2",
+                "-ar",
+                "48000",
+                "-c:a",
+                "pcm_s16le",
+                str(out),
+            ]
+        )
+        if not out.exists() or out.stat().st_size == 0:
+            raise MediaError("audio extraction produced an empty file")
+    except (MediaError, OSError):
+        try:
+            out.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     return out
 
 

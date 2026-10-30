@@ -23,6 +23,7 @@
     "OnnxDetectionModelLoader",
     "PoseAndFaceDetection",
     "DrawViTPose",
+    "TrimVideoLatent",
     "CLIPLoader",
     "VAELoader",
     "CLIPVisionLoader",

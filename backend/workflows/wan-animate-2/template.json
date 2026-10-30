@@ -47,6 +47,7 @@
       "pose_data": ["21", 0],
       "width": "@width",
       "height": "@height",
+      "retarget_padding": 16,
       "body_stick_width": -1,
       "hand_stick_width": -1,
       "draw_head": true
@@ -152,25 +153,33 @@
     "_meta": { "title": "Sampler" }
   },
   "13": {
-    "class_type": "VAEDecode",
+    "class_type": "TrimVideoLatent",
     "inputs": {
       "samples": ["12", 0],
+      "trim_amount": ["10", 3]
+    },
+    "_meta": { "title": "Trim conditioning frames" }
+  },
+  "14": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["13", 0],
       "vae": ["4", 0]
     },
     "_meta": { "title": "Decode" }
   },
-  "14": {
+  "15": {
     "class_type": "CreateVideo",
     "inputs": {
-      "images": ["13", 0],
+      "images": ["14", 0],
       "fps": "@fps"
     },
     "_meta": { "title": "Assemble video" }
   },
-  "15": {
+  "16": {
     "class_type": "SaveVideo",
     "inputs": {
-      "video": ["14", 0],
+      "video": ["15", 0],
       "filename_prefix": "@prefix",
       "format": "mp4",
       "codec": "h264"

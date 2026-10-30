@@ -59,6 +59,8 @@
     view: 'result',
     submitting: false,
     touched: new Set(),
+    healthInFlight: false,
+    healthAt: 0,
   };
 
   const el = {};
@@ -174,9 +176,12 @@
   let reconnectDelay = 1000;
 
   async function refreshHealth({ quiet = false } = {}) {
+    if (state.healthInFlight) return state.health;
+    state.healthInFlight = true;
     try {
       const health = await api('/api/health');
       state.health = health;
+      state.healthAt = Date.now();
       const gpu = health.gpu?.available ? shortGpu(health.gpu.name) : 'No GPU';
       const busy = health.queue?.active;
       setPill(busy ? 'busy' : 'ok', busy ? 'Rendering' : 'Ready');
@@ -213,7 +218,10 @@
           if (!state.health) scheduleReconnect();
         }, delay);
       }
+      renderTelemetry(state.health, true);
       return null;
+    } finally {
+      state.healthInFlight = false;
     }
   }
 
@@ -227,24 +235,63 @@
     }
   }
 
-  function renderTelemetry(health) {
+  function renderTelemetry(health, stale = false) {
     const disk = health?.storage || {};
     const memory = health?.memory || {};
     const gpu = health?.gpu || {};
+    const finite = (value) => Number.isFinite(Number(value));
+    const usedRam = finite(memory.total_mb) && finite(memory.available_mb)
+      ? Math.max(0, Number(memory.total_mb) - Number(memory.available_mb)) : null;
+    const vramUsed = finite(gpu.vram_used_mb) ? Number(gpu.vram_used_mb) : null;
+    const vramTotal = finite(gpu.vram_total_mb) ? Number(gpu.vram_total_mb) : null;
+    const vramPct = vramTotal > 0 && vramUsed != null ? clamp(vramUsed / vramTotal * 100, 0, 100) : null;
+    const ramPct = finite(memory.total_mb) && Number(memory.total_mb) > 0 && usedRam != null
+      ? clamp(usedRam / Number(memory.total_mb) * 100, 0, 100) : null;
+    const diskPct = finite(disk.total_mb) && Number(disk.total_mb) > 0 && finite(disk.free_mb)
+      ? clamp((Number(disk.total_mb) - Number(disk.free_mb)) / Number(disk.total_mb) * 100, 0, 100) : null;
+    const temp = finite(gpu.temperature_c) ? Number(gpu.temperature_c) : null;
+    const thermal = temp == null ? ['unavailable', 'NO SENSOR'] : temp >= 88 ? ['hot', 'HOT'] : temp >= 80 ? ['warm', 'WARM'] : temp >= 70 ? ['normal', 'NORMAL'] : ['cool', 'COOL'];
+    const metric = (value, suffix = '') => value == null ? '—' : `${value}${suffix}`;
+    const bytes = (mb) => mb == null ? '—' : fmtBytes(Math.max(0, mb) * 1024 * 1024);
+    const meter = (label, value, tone = '') => `<div class="telemetry-meter"><div class="telemetry-meter__head"><span>${label}</span><b>${value == null ? '—' : `${Math.round(value)}%`}</b></div><div class="telemetry-meter__track"><i class="telemetry-meter__fill ${tone}" style="width:${value == null ? 0 : value}%"></i></div></div>`;
+    const queue = health?.queue?.queued ?? 0;
+    const connected = health?.comfy?.reachable;
+
     const parts = [];
-    if (disk.free_mb != null) parts.push(`disk ${fmtBytes(disk.free_mb * 1024 * 1024)} free`);
-    if (memory.total_mb != null && memory.available_mb != null) {
-      parts.push(`RAM ${fmtBytes((memory.total_mb - memory.available_mb) * 1024 * 1024)} / ${fmtBytes(memory.total_mb * 1024 * 1024)}`);
-    }
-    if (memory.process_rss_mb != null) parts.push(`app ${fmtBytes(memory.process_rss_mb * 1024 * 1024)}`);
-    if (gpu.available) parts.push(`VRAM ${fmtBytes(gpu.vram_used_mb * 1024 * 1024)} / ${fmtBytes(gpu.vram_total_mb * 1024 * 1024)}`);
+    if (temp != null) parts.push(`GPU ${Math.round(temp)}°C`);
+    if (gpu.fan_percent != null) parts.push(`fan ${gpu.fan_percent}%`);
+    if (vramUsed != null && vramTotal > 0) parts.push(`VRAM ${bytes(vramUsed)} / ${bytes(vramTotal)}`);
+    if (usedRam != null && finite(memory.total_mb)) parts.push(`RAM ${bytes(usedRam)} / ${bytes(Number(memory.total_mb))}`);
+    if (disk.free_mb != null) parts.push(`disk ${bytes(Number(disk.free_mb))} free`);
     if (el.telemetryBadge) {
       el.telemetryBadge.hidden = !parts.length;
       el.telemetryBadge.textContent = parts.slice(0, 3).join(' · ');
       el.telemetryBadge.title = parts.join(' · ');
+      el.telemetryBadge.dataset.state = stale ? 'stale' : thermal[0];
+    }
+    if (el.telemetryDashboard) {
+      el.telemetryDashboard.dataset.stale = stale ? 'true' : 'false';
+      el.telemetryDashboard.innerHTML = `
+        <div class="telemetry-card telemetry-card--thermal">
+          <div class="telemetry-card__head"><span>GPU thermal</span><em class="telemetry-state" data-state="${thermal[0]}">${stale ? 'STALE' : thermal[1]}</em></div>
+          <div class="telemetry-card__hero"><strong>${metric(temp, '°')}</strong><span>temperature</span></div>
+          <div class="telemetry-card__metrics"><span>Fan <b>${metric(gpu.fan_percent, '%')}</b></span><span>Load <b>${metric(gpu.utilization_gpu_percent, '%')}</b></span><span>Power <b>${gpu.power_draw_w == null ? '—' : `${Number(gpu.power_draw_w).toFixed(0)} / ${gpu.power_limit_w == null ? '—' : Number(gpu.power_limit_w).toFixed(0)} W`}</b></span></div>
+        </div>
+        <div class="telemetry-card telemetry-card--memory">
+          <div class="telemetry-card__head"><span>Memory pressure</span><em class="telemetry-state" data-state="${vramPct >= 95 ? 'hot' : vramPct >= 80 ? 'warm' : 'normal'}">${vramPct == null ? 'NO SENSOR' : `${Math.round(vramPct)}% VRAM`}</em></div>
+          ${meter('VRAM', vramPct, vramPct >= 95 ? 'is-hot' : '')}
+          ${meter('RAM', ramPct, ramPct >= 90 ? 'is-hot' : '')}
+          <div class="telemetry-card__metrics"><span>VRAM <b>${bytes(vramUsed)} / ${bytes(vramTotal)}</b></span><span>Backend <b>${bytes(memory.process_rss_mb)}</b></span></div>
+        </div>
+        <div class="telemetry-card telemetry-card--runtime">
+          <div class="telemetry-card__head"><span>Runtime</span><em class="telemetry-state" data-state="${connected ? 'cool' : 'hot'}">${connected ? 'ONLINE' : 'OFFLINE'}</em></div>
+          <div class="telemetry-card__metrics telemetry-card__metrics--grid"><span>Queue <b>${queue} waiting${health?.queue?.active ? ' · active' : ''}</b></span><span>Disk free <b>${bytes(disk.free_mb)}</b></span><span>ffmpeg <b>${health?.ffmpeg?.ok ? 'ready' : 'missing'}</b></span><span>Uptime <b>${fmtTime(health?.uptime_s)}</b></span></div>
+          ${meter('Disk used', diskPct)}
+        </div>`;
     }
     if (el.healthUpdated) {
-      el.healthUpdated.textContent = `Live · updated ${new Date().toLocaleTimeString()}`;
+      const when = state.healthAt ? new Date(state.healthAt).toLocaleTimeString() : '—';
+      el.healthUpdated.textContent = stale ? `Stale · last update ${when}` : `Live · updated ${when}`;
     }
   }
 
@@ -968,6 +1015,7 @@
     el.pill = $('#status-pill');
     el.gpuBadge = $('#gpu-badge');
     el.telemetryBadge = $('#telemetry-badge');
+    el.telemetryDashboard = $('#telemetry-dashboard');
     el.healthUpdated = $('#health-updated');
     el.toasts = $('#toasts');
     el.health = $('#health-panel');

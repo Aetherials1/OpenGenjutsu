@@ -58,10 +58,9 @@ SPECS: dict[str, list[dict]] = {
     ],
     "animate": [
         {
-            "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+            "repo": "Kijai/WanVideo_comfy_fp8_scaled",
             "patterns": [
-                "split_files/diffusion_models/*animate*14B*fp8*.safetensors",
-                "split_files/diffusion_models/*animate*14B*.safetensors",
+                "Wan22Animate/Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
             ],
             "dest": "diffusion_models",
             "label": "Wan 2.2 Animate 14B (fp8)",
@@ -137,7 +136,7 @@ PRESETS = {
     "vace": ["shared", "vace"],
     "animate": ["shared", "animate", "animate-preprocess"],
     "animate-q4": ["shared", "animate-q4", "animate-preprocess"],
-    "animate2": ["shared", "animate2"],
+    "animate2": ["shared", "animate2", "animate-preprocess"],
     "all": ["shared", "vace", "animate2", "animate-q4", "animate", "animate-preprocess"],
 }
 

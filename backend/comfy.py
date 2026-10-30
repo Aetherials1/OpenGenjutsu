@@ -31,13 +31,43 @@ class ComfyError(RuntimeError):
     pass
 
 
+def _smi_number(value: str, *, integer: bool = False) -> int | float | None:
+    """Parse an nvidia-smi number while preserving N/A as unavailable."""
+    value = value.strip()
+    if not value or value.upper() in {"N/A", "NA", "NOT SUPPORTED"}:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return int(number) if integer else number
+
+
+def _gpu_unavailable() -> dict[str, Any]:
+    return {
+        "available": False,
+        "name": None,
+        "vram_total_mb": 0,
+        "vram_used_mb": 0,
+        "driver": None,
+        "temperature_c": None,
+        "fan_percent": None,
+        "utilization_gpu_percent": None,
+        "utilization_memory_percent": None,
+        "power_draw_w": None,
+        "power_limit_w": None,
+    }
+
+
 def gpu_info() -> dict[str, Any]:
-    """Best-effort GPU description via nvidia-smi."""
+    """Best-effort GPU description and optional thermal/load telemetry."""
     try:
         out = subprocess.run(
             [
                 "nvidia-smi",
-                "--query-gpu=name,memory.total,memory.used,driver_version",
+                "--query-gpu=name,memory.total,memory.used,driver_version,"
+                "temperature.gpu,fan.speed,utilization.gpu,utilization.memory,"
+                "power.draw,power.limit",
                 "--format=csv,noheader,nounits",
             ],
             stdout=subprocess.PIPE,
@@ -45,24 +75,64 @@ def gpu_info() -> dict[str, Any]:
             timeout=15,
             check=False,
         )
-        line = out.stdout.decode("utf-8", "replace").strip().splitlines()
-        if out.returncode == 0 and line:
-            name, total, used, driver = [p.strip() for p in line[0].split(",")]
-            return {
-                "available": True,
-                "name": name,
-                "vram_total_mb": int(float(total)),
-                "vram_used_mb": int(float(used)),
-                "driver": driver,
-            }
+        lines = out.stdout.decode("utf-8", "replace").strip().splitlines()
+        if out.returncode == 0 and lines:
+            fields = [part.strip() for part in lines[0].split(",")]
+            if len(fields) >= 10:
+                name, total, used, driver = fields[:4]
+                return {
+                    "available": True,
+                    "name": name,
+                    "vram_total_mb": int(_smi_number(total, integer=True) or 0),
+                    "vram_used_mb": int(_smi_number(used, integer=True) or 0),
+                    "driver": driver or None,
+                    "temperature_c": _smi_number(fields[4], integer=True),
+                    "fan_percent": _smi_number(fields[5], integer=True),
+                    "utilization_gpu_percent": _smi_number(fields[6], integer=True),
+                    "utilization_memory_percent": _smi_number(fields[7], integer=True),
+                    "power_draw_w": _smi_number(fields[8]),
+                    "power_limit_w": _smi_number(fields[9]),
+                }
+        # Older/virtual nvidia-smi builds may reject optional telemetry fields.
+        # Preserve the useful GPU/VRAM card by retrying the stable query.
+        basic = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total,memory.used,driver_version",
+                "--format=csv,noheader,nounits",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=8,
+            check=False,
+        )
+        basic_lines = basic.stdout.decode("utf-8", "replace").strip().splitlines()
+        if basic.returncode == 0 and basic_lines:
+            fields = [part.strip() for part in basic_lines[0].split(",")]
+            if len(fields) >= 4:
+                name, total, used, driver = fields[:4]
+                return {
+                    "available": True,
+                    "name": name,
+                    "vram_total_mb": int(_smi_number(total, integer=True) or 0),
+                    "vram_used_mb": int(_smi_number(used, integer=True) or 0),
+                    "driver": driver or None,
+                    "temperature_c": None,
+                    "fan_percent": None,
+                    "utilization_gpu_percent": None,
+                    "utilization_memory_percent": None,
+                    "power_draw_w": None,
+                    "power_limit_w": None,
+                }
     except Exception:
         pass
-    return {"available": False, "name": None, "vram_total_mb": 0, "vram_used_mb": 0}
+    return _gpu_unavailable()
 
 
 class ComfyClient:
     def __init__(self, base_url: str | None = None) -> None:
         self.base = (base_url or settings.comfy_url).rstrip("/")
+        self._staged_files: set[Path] = set()
         parsed = urlparse(self.base)
         self.ws_base = (
             ("wss" if parsed.scheme == "https" else "ws")
@@ -113,8 +183,13 @@ class ComfyClient:
         safe = "og_" + _safe_name(name)
         if settings.comfy_input_dir:
             target_dir = Path(settings.comfy_input_dir)
-            target_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(local, target_dir / safe)
+            try:
+                target_dir.mkdir(parents=True, exist_ok=True)
+                target = target_dir / safe
+                shutil.copy2(local, target)
+                self._staged_files.add(target)
+            except OSError as exc:
+                raise ComfyError(f"could not stage input in ComfyUI: {exc}") from exc
             return safe
 
         mime = "video/mp4" if safe.lower().endswith((".mp4", ".webm", ".mov")) else None
@@ -138,17 +213,16 @@ class ComfyClient:
         return payload["name"]
 
     def clear_staging(self) -> None:
-        """Delete inputs this backend staged (never touches the user's files)."""
-        if not settings.comfy_input_dir:
-            return
-        root = Path(settings.comfy_input_dir)
-        for path in root.glob("og_*"):
-            if path.is_file():
-                try:
-                    path.unlink()
-                except OSError:
-                    pass
-        shutil.rmtree(root / "ogenjutsu", ignore_errors=True)
+        """Delete only OpenGenjutsu's staged inputs (never touches user files)."""
+        # HTTP uploads cannot be safely deleted through ComfyUI's public API;
+        # filesystem staging is tracked per client/job so concurrent renders do
+        # not remove each other's inputs or user-owned files.
+        for path in tuple(self._staged_files):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        self._staged_files.clear()
 
     # ------------------------------------------------------------------- jobs
     def submit(self, graph: dict[str, Any], client_id: str) -> str:

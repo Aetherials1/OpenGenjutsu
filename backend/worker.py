@@ -222,6 +222,11 @@ class JobRunner:
             if thumb is None:
                 self.store.append_log(job_id, "warning: thumbnail generation failed")
         except (MediaError, OSError) as exc:
+            try:
+                (job.output_dir / "result.mp4").unlink(missing_ok=True)
+                (job.output_dir / "thumb.jpg").unlink(missing_ok=True)
+            except OSError:
+                pass
             self.store.update(
                 job_id,
                 status="error",
@@ -313,7 +318,7 @@ class JobRunner:
             width=int(params.get("width") or settings.default_width),
             height=int(params.get("height") or settings.default_height),
             fps=float(params.get("fps") or settings.default_fps),
-            model_fps=float(params.get("model_fps") or min(16.0, float(params.get("fps") or settings.default_fps))),
+            model_fps=float(params.get("model_fps") or 16.0),
             frames=int(params.get("frames") or 49),
             steps=int(params.get("steps") or 6),
             cfg=float(params.get("cfg") or 1.0),
@@ -331,20 +336,24 @@ class JobRunner:
         out.parent.mkdir(parents=True, exist_ok=True)
 
         keep = bool(job.params.get("keep_audio"))
-        volume = float(job.params.get("audio_volume", 1.0) or 1.0)
+        volume = float(job.params.get("audio_volume", 1.0))
 
         if not keep:
             strip_audio(render, out)
             self.store.append_log(job.id, "audio: stripped (toggle off)")
             return out, False
 
-        if not job.audio_path:
+        if not job.has_source_audio or not job.audio_path:
             strip_audio(render, out)
             self.store.append_log(
                 job.id, "audio: source had no audio track - rendered silently"
             )
             return out, False
 
+        if volume <= 0.001:
+            strip_audio(render, out)
+            self.store.append_log(job.id, "audio: stripped (volume is zero)")
+            return out, False
         mux_audio(render, job.audio_path, out, volume=volume)
         self.store.append_log(
             job.id, f"audio: original track attached (gain {volume:.2f}x, trimmed/padded to video length)"

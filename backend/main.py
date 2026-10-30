@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import math
 import mimetypes
 import os
 import random
@@ -353,30 +354,65 @@ async def create_job(
         )
 
     defaults = impl.defaults()
-    max_seconds = float(defaults.get("max_seconds") or settings.default_max_seconds)
+    try:
+        max_seconds = float(defaults.get("max_seconds") or settings.default_max_seconds)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise HTTPException(status_code=500, detail="engine has an invalid duration limit") from exc
+    if not math.isfinite(max_seconds) or max_seconds <= 0:
+        raise HTTPException(status_code=500, detail="engine has an invalid duration limit")
 
-    width = _snap(int(width or defaults["width"]), 16)
-    height = _snap(int(height or defaults["height"]), 16)
-    fps = max(1.0, min(60.0, float(fps or defaults["fps"])))
-    requested_seconds = max(0.5, float(seconds or 4.0))
+    try:
+        requested_width = int(width if width is not None else defaults["width"])
+        requested_height = int(height if height is not None else defaults["height"])
+        requested_fps = float(fps if fps is not None else defaults["fps"])
+        requested_seconds = float(seconds if seconds is not None else 4.0)
+        requested_steps = int(steps if steps is not None else defaults["steps"])
+        requested_cfg = float(cfg if cfg is not None else defaults["cfg"])
+        requested_shift = float(shift if shift is not None else defaults.get("shift", 5.0))
+        requested_seed = int(seed if seed is not None else -1)
+        requested_volume = float(audio_volume if audio_volume is not None else 1.0)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise HTTPException(status_code=422, detail="numeric render settings are invalid") from exc
+    if requested_width < 64 or requested_height < 64 or requested_width > 2048 or requested_height > 2048:
+        raise HTTPException(status_code=422, detail="width and height must be between 64 and 2048 pixels")
+    if not all(math.isfinite(value) for value in (
+        float(requested_width), float(requested_height), requested_fps, requested_seconds,
+        float(requested_steps), requested_cfg, requested_shift, requested_volume,
+    )):
+        raise HTTPException(status_code=422, detail="fps, seconds, cfg, shift and audio volume must be finite")
+    if requested_steps < 1 or requested_steps > 60:
+        raise HTTPException(status_code=422, detail="steps must be between 1 and 60")
+    if requested_cfg < 0 or requested_cfg > 20 or requested_shift < 0 or requested_shift > 20:
+        raise HTTPException(status_code=422, detail="cfg and shift must be between 0 and 20")
+    if requested_volume < 0 or requested_volume > 2:
+        raise HTTPException(status_code=422, detail="audio volume must be between 0 and 2")
+    width = _snap(requested_width, 16)
+    height = _snap(requested_height, 16)
+    if width * height > 1280 * 1280:
+        raise HTTPException(status_code=422, detail="resolution exceeds the 1.64 megapixel limit")
+    fps = max(1.0, min(60.0, requested_fps))
+    requested_seconds = max(0.5, requested_seconds)
     seconds = min(max_seconds, requested_seconds)
-    if requested_seconds > max_seconds:
-        # One API job is one Wan window. The UI caps the request too; keeping the
-        # explicit clamp here prevents an oversized latent from reaching ComfyUI.
-        pass
     # Wan Animate's conditioning and checkpoint are trained at 16 fps.  Keep
     # sampling at that native rate, then deliver 24/30/60 fps by interpolation
     # after generation.  This avoids pretending that 60 fps gives 60 distinct
     # diffusion frames and keeps the compute cost bounded.
-    model_fps = min(16.0, fps)
+    try:
+        model_fps = float(defaults.get("model_fps") or 16.0)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise HTTPException(status_code=500, detail="engine has an invalid native frame rate") from exc
+    if not math.isfinite(model_fps) or model_fps <= 0 or model_fps > 120:
+        raise HTTPException(status_code=500, detail="engine has an invalid native frame rate")
     frames = wan_frames(int(round(seconds * model_fps)))
-    steps = max(1, min(60, int(steps or defaults["steps"])))
-    cfg = max(0.0, min(20.0, float(cfg if cfg is not None else defaults["cfg"])))
-    shift = max(0.0, min(20.0, float(shift)))
-    seed = int(seed)
+    while frames > 5 and frames / model_fps > max_seconds:
+        frames -= 4
+    steps = requested_steps
+    cfg = requested_cfg
+    shift = requested_shift
+    seed = requested_seed
     if seed < 0:
         seed = random.randint(1, 2**31 - 1)
-    audio_volume = max(0.0, min(2.0, float(audio_volume)))
+    audio_volume = requested_volume
 
     job = store.create(
         params={

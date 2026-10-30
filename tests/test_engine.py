@@ -28,6 +28,7 @@ from backend.engines.base import (  # noqa: E402
     placeholder_values,
 )
 from backend.media import probe  # noqa: E402
+from scripts.download_models import SPECS  # noqa: E402
 
 FAILED: list[str] = []
 PASSED = 0
@@ -41,6 +42,19 @@ def check(ok: bool, label: str, detail: str = "") -> None:
     else:
         FAILED.append(label)
         print(f"  [FAIL] {label}" + (f"\n         {detail}" if detail else ""))
+
+
+def strict_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def strict_json(path: Path):
+    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=strict_object)
 
 
 def walk_strings(node):
@@ -86,11 +100,16 @@ for directory in templates:
         check(False, f"{directory.name}: loads", str(exc))
         continue
 
-    manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    manifest = strict_json(directory / "manifest.json")
     check(all(k in manifest for k in ("id", "label", "priority", "defaults")), f"{directory.name}: manifest keys")
     check(isinstance(manifest.get("min_vram_mb"), int), f"{directory.name}: declares min_vram_mb")
     check(len(engine.required_nodes()) > 0, f"{directory.name}: lists required_nodes")
     check(manifest["id"] == directory.name, f"{directory.name}: id matches folder")
+    if directory.name == "wan22-animate":
+        fp8_specs = [spec for spec in SPECS["animate"] if spec.get("quant") == "fp8"]
+        expected = Path(manifest["required_models"][0]).name
+        downloaded = [pattern.rsplit("/", 1)[-1] for spec in fp8_specs for pattern in spec["patterns"]]
+        check(expected in downloaded, "wan22-animate: downloader model matches manifest", f"{expected} not in {downloaded}")
 
     # every placeholder resolves
     unknown: set[str] = set()
@@ -121,11 +140,26 @@ for directory in templates:
     lengths = [
         node["inputs"]["length"]
         for node in graph.values()
-        if node.get("class_type") in {"WanVaceToVideo", "WanAnimateToVideo"}
+        if node.get("class_type") in {"WanVaceToVideo", "WanAnimateToVideo", "WanAnimate2ToVideo"}
     ]
     check(all(isinstance(n, int) for n in lengths), f"{directory.name}: length is an int")
     check(any(node.get("class_type") in {"SaveVideo", "SaveAnimatedWEBP"} for node in graph.values()),
           f"{directory.name}: has a video output node")
+
+    links = []
+    for node_id, node in graph.items():
+        for key, value in (node.get("inputs") or {}).items():
+            if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str):
+                links.append((node_id, key, value))
+    check(all(link[2][0] in graph for link in links), f"{directory.name}: links reference existing nodes")
+    save_nodes = [node for node in graph.values() if node.get("class_type") == "SaveVideo"]
+    create_nodes = {node_id for node_id, node in graph.items() if node.get("class_type") == "CreateVideo"}
+    check(all((node.get("inputs") or {}).get("video", [None])[0] in create_nodes for node in save_nodes),
+          f"{directory.name}: SaveVideo receives CreateVideo output")
+    required = set(manifest.get("required_nodes") or [])
+    present = {node.get("class_type") for node in graph.values()}
+    check(required <= present, f"{directory.name}: template contains required nodes",
+          f"missing: {sorted(required - present)}")
 
     if directory.name in {"wan22-animate-gguf", "wan22-animate"}:
         wan_node = "9"
