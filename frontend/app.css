@@ -173,6 +173,21 @@ h1, h2, h3, p, figure, dl, dd, dt { margin: 0; }
   background: rgba(125, 149, 255, 0.08);
 }
 
+.telemetry-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 300px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-3);
+  font: 10px var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .icon-btn {
   width: 28px;
   height: 28px;
@@ -1200,6 +1215,13 @@ kbd {
 
 .health .ok { color: var(--ok); }
 .health .bad { color: var(--err); }
+
+.health-updated {
+  margin-top: 8px;
+  color: var(--text-3);
+  font: 10px var(--mono);
+  text-align: right;
+}
 
 /* ------------------------------------------------------------------- toasts */
 

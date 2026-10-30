@@ -27,6 +27,7 @@
 
     <div class="topbar__right">
       <span class="gpu-badge" id="gpu-badge" hidden></span>
+      <span class="telemetry-badge" id="telemetry-badge" title="Live system telemetry" hidden></span>
       <span class="status" id="status-pill" data-state="wait" role="status">
         <i class="status__dot" aria-hidden="true"></i><span>Connecting</span>
       </span>
@@ -294,6 +295,7 @@
     </div>
 
     <div class="health" id="health-panel"></div>
+    <p class="health-updated" id="health-updated" aria-live="polite"></p>
 
     <div class="dialog__actions">
       <button value="cancel" class="btn" type="submit">Close</button>

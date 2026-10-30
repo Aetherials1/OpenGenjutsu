@@ -705,8 +705,6 @@ def prepare_motion(
             "-y",
             "-v",
             "error",
-            "-ss",
-            f"{max(0.0, float(start_seconds)):g}",
             "-stream_loop",
             "-1",
             "-i",

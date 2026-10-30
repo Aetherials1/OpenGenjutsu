@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import mimetypes
+import os
 import random
 import shutil
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+try:
+    import resource
+except ImportError:  # Windows
+    resource = None
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -39,6 +46,59 @@ log = logging.getLogger("ogenjutsu")
 
 STARTED_AT = time.time()
 runner = get_runner(store)
+
+
+def _memory_info() -> dict[str, int | None]:
+    """Best-effort process and host memory telemetry without extra dependencies."""
+    process_rss_mb: int | None = None
+    host_total_mb: int | None = None
+    host_available_mb: int | None = None
+    try:
+        if os.name == "nt":
+            class MEMORYSTATUSEX2(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+            status = MEMORYSTATUSEX2()
+            status.dwLength = ctypes.sizeof(status)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                host_total_mb = status.ullTotalPhys // (1024 * 1024)
+                host_available_mb = status.ullAvailPhys // (1024 * 1024)
+        else:
+            meminfo = Path("/proc/meminfo").read_text(encoding="utf-8")
+            values = {
+                line.split(":", 1)[0]: int(line.split()[1])
+                for line in meminfo.splitlines() if ":" in line and line.split()[1].isdigit()
+            }
+            host_total_mb = values.get("MemTotal", 0) // 1024
+            host_available_mb = values.get("MemAvailable", values.get("MemFree", 0)) // 1024
+    except Exception:
+        pass
+    try:
+        if os.name == "nt":
+            class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                _fields_ = [("cb", ctypes.c_ulong), ("PageFaultCount", ctypes.c_ulong),
+                            ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                            ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+            counters = PROCESS_MEMORY_COUNTERS()
+            counters.cb = ctypes.sizeof(counters)
+            ctypes.windll.psapi.GetProcessMemoryInfo(
+                ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb
+            )
+            process_rss_mb = counters.WorkingSetSize // (1024 * 1024)
+        elif resource is not None:
+            process_rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
+        if process_rss_mb == 0:
+            process_rss_mb = None
+    except Exception:
+        pass
+    return {"process_rss_mb": process_rss_mb, "total_mb": host_total_mb, "available_mb": host_available_mb}
 
 
 # --------------------------------------------------------------------------- #
@@ -214,7 +274,9 @@ def health() -> dict[str, Any]:
             "data_dir": str(settings.data_dir),
             "free_mb": disk.free // (1024 * 1024),
             "total_mb": disk.total // (1024 * 1024),
+            "used_mb": (disk.total - disk.free) // (1024 * 1024),
         },
+        "memory": _memory_info(),
         "engines": engines,
         "auth": {"required": bool(settings.auth_token)},
     }

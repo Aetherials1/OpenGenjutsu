@@ -196,6 +196,7 @@
       }
 
       renderHealth(health);
+      renderTelemetry(health);
       reconnectDelay = 1000;
       return health;
     } catch (error) {
@@ -226,6 +227,27 @@
     }
   }
 
+  function renderTelemetry(health) {
+    const disk = health?.storage || {};
+    const memory = health?.memory || {};
+    const gpu = health?.gpu || {};
+    const parts = [];
+    if (disk.free_mb != null) parts.push(`disk ${fmtBytes(disk.free_mb * 1024 * 1024)} free`);
+    if (memory.total_mb != null && memory.available_mb != null) {
+      parts.push(`RAM ${fmtBytes((memory.total_mb - memory.available_mb) * 1024 * 1024)} / ${fmtBytes(memory.total_mb * 1024 * 1024)}`);
+    }
+    if (memory.process_rss_mb != null) parts.push(`app ${fmtBytes(memory.process_rss_mb * 1024 * 1024)}`);
+    if (gpu.available) parts.push(`VRAM ${fmtBytes(gpu.vram_used_mb * 1024 * 1024)} / ${fmtBytes(gpu.vram_total_mb * 1024 * 1024)}`);
+    if (el.telemetryBadge) {
+      el.telemetryBadge.hidden = !parts.length;
+      el.telemetryBadge.textContent = parts.slice(0, 3).join(' · ');
+      el.telemetryBadge.title = parts.join(' · ');
+    }
+    if (el.healthUpdated) {
+      el.healthUpdated.textContent = `Live · updated ${new Date().toLocaleTimeString()}`;
+    }
+  }
+
   function renderHealth(health) {
     if (!health) {
       el.health.innerHTML = '<div><span>Backend</span><b class="bad">unreachable</b></div>';
@@ -249,8 +271,22 @@
       `<div><span>Model staging</span><b>${health.comfy?.staging_mode || '—'}</b></div>`
     );
     rows.push(
-      `<div><span>Disk free</span><b>${fmtBytes((health.storage?.free_mb || 0) * 1024 * 1024)}</b></div>`
+      `<div><span>Disk</span><b>${fmtBytes((health.storage?.free_mb || 0) * 1024 * 1024)} free / ${fmtBytes((health.storage?.total_mb || 0) * 1024 * 1024)}</b></div>`
     );
+    const memory = health.memory || {};
+    if (memory.total_mb != null && memory.available_mb != null) {
+      rows.push(
+        `<div><span>RAM</span><b>${fmtBytes((memory.total_mb - memory.available_mb) * 1024 * 1024)} used / ${fmtBytes(memory.total_mb * 1024 * 1024)}</b></div>`
+      );
+    }
+    if (memory.process_rss_mb != null) {
+      rows.push(`<div><span>Backend RAM</span><b>${fmtBytes(memory.process_rss_mb * 1024 * 1024)}</b></div>`);
+    }
+    if (health.gpu?.available) {
+      rows.push(
+        `<div><span>VRAM</span><b>${fmtBytes((health.gpu.vram_used_mb || 0) * 1024 * 1024)} used / ${fmtBytes((health.gpu.vram_total_mb || 0) * 1024 * 1024)}</b></div>`
+      );
+    }
     rows.push(`<div><span>ffmpeg</span>${ok(health.ffmpeg?.ok)}</div>`);
     rows.push(
       `<div><span>Auth</span><b>${health.auth?.required ? 'token required' : 'open'}</b></div>`
@@ -931,6 +967,8 @@
   function cacheEls() {
     el.pill = $('#status-pill');
     el.gpuBadge = $('#gpu-badge');
+    el.telemetryBadge = $('#telemetry-badge');
+    el.healthUpdated = $('#health-updated');
     el.toasts = $('#toasts');
     el.health = $('#health-panel');
     el.engine = $('#engine');
@@ -1118,10 +1156,10 @@
       openSettings();
     }
 
-    // Periodic heartbeat so the status pill reflects the GPU going away.
+    // Live telemetry: refresh disk, RAM and VRAM while rendering too.
     setInterval(() => {
-      if (!isBusy()) refreshHealth({ quiet: true });
-    }, 20000);
+      refreshHealth({ quiet: true });
+    }, 5000);
   }
 
   if (document.readyState === 'loading') {
