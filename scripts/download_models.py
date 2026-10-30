@@ -95,6 +95,29 @@ SPECS: dict[str, list[dict]] = {
             "required": True,
         },
     ],
+    "animate-preprocess": [
+        {
+            "repo": "Wan-AI/Wan2.2-Animate-14B",
+            "patterns": ["process_checkpoint/det/yolov10m.onnx"],
+            "dest": "detection",
+            "label": "Wan Animate YOLO detector",
+            "required": True,
+        },
+        {
+            "repo": "JunkyByte/easy_ViTPose",
+            "patterns": ["onnx/wholebody/vitpose-l-wholebody.onnx"],
+            "dest": "detection",
+            "label": "Wan Animate ViTPose whole-body detector",
+            "required": True,
+        },
+        {
+            "repo": "Kijai/sam2-safetensors",
+            "patterns": ["sam2.1_hiera_base_plus-fp16.safetensors", "sam2.1_hiera_base_plus.safetensors"],
+            "dest": "sam2",
+            "label": "SAM2.1 base-plus video segmentation model",
+            "required": True,
+        },
+    ],
     "animate2": [
         {
             "repo": "Comfy-Org/Wan-Animate-2",
@@ -111,10 +134,10 @@ SPECS: dict[str, list[dict]] = {
 
 PRESETS = {
     "vace": ["shared", "vace"],
-    "animate": ["shared", "animate"],
-    "animate-q4": ["shared", "animate-q4"],
+    "animate": ["shared", "animate", "animate-preprocess"],
+    "animate-q4": ["shared", "animate-q4", "animate-preprocess"],
     "animate2": ["shared", "animate2"],
-    "all": ["shared", "vace", "animate2", "animate-q4", "animate"],
+    "all": ["shared", "vace", "animate2", "animate-q4", "animate", "animate-preprocess"],
 }
 
 
@@ -150,10 +173,10 @@ def match(repo_id: str, patterns: list[str], cache: dict[str, list[str]]) -> lis
     return hits
 
 
-def link_into(source: Path, models_root: Path, dest: str) -> Path:
+def link_into(source: Path, models_root: Path, dest: str, name: str | None = None) -> Path:
     target_dir = models_root / dest
     target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / source.name
+    target = target_dir / (name or source.name)
     if target.exists() or target.is_symlink():
         try:
             if target.resolve() == source.resolve():
@@ -238,7 +261,7 @@ def main() -> int:
                 token=os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_HUB_TOKEN") or None,
                 resume_download=True,
             )
-            link_into(Path(path), comfy_root / "models", spec["dest"])
+            link_into(Path(path), comfy_root / "models", spec["dest"], spec.get("rename"))
         except Exception as exc:  # noqa: BLE001
             failures.append(f"{label}: {exc}")
             log(f"ERROR {exc}")

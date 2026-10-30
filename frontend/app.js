@@ -293,7 +293,7 @@
     if (!engine) return;
 
     const d = engine.defaults || {};
-    const maxSeconds = Number(d.max_seconds || 8);
+    const maxSeconds = Number(d.max_seconds || 30);
 
     el.seconds.max = String(clamp(maxSeconds, 1, 30));
     if (!state.touched.has('seconds')) {
@@ -430,12 +430,19 @@
   }
 
   function autoSeconds(sourceDuration) {
-    const max = Number(el.seconds.max) || 8;
-    if (state.touched.has('seconds')) return;
-    const dur = clamp(sourceDuration, 1, max);
+    const max = Number(el.seconds.max) || 30;
+    const dur = clamp(sourceDuration, 0.5, max);
     const stepped = Math.round(dur * 2) / 2;
-    el.seconds.value = String(clamp(stepped, 1, max));
-    updateSeconds();
+    if (!state.touched.has('seconds')) el.seconds.value = String(clamp(stepped, 1, max));
+    if (el.autoDuration?.checked) {
+      const used = Math.min(sourceDuration, max);
+      el.secondsOut.textContent = `${used.toFixed(1)}s${sourceDuration > max ? ` · source capped at ${max}s` : ' · source length'}`;
+      el.secondsOut.title = sourceDuration > max
+        ? `The model limit is ${max}s for one pass`
+        : 'The full uploaded motion clip will be used';
+    } else {
+      updateSeconds();
+    }
   }
 
   function autoResolution(sourceWidth, sourceHeight) {
@@ -495,11 +502,14 @@
   function updateSeconds() {
     const seconds = Number(el.seconds.value);
     const fps = Number(el.fps.value) || 16;
-    // Wan needs 4n+1 frames; the backend rounds up, so show the same number.
-    const raw = Math.max(5, Math.round(seconds * fps));
+    const modelFps = Math.min(16, fps);
+    // Wan samples at 16 fps and needs 4n+1 frames; higher delivery rates are
+    // interpolated after sampling, so they must not increase diffusion length.
+    const raw = Math.max(5, Math.round(seconds * modelFps));
     const frames = Math.ceil((raw - 1) / 4) * 4 + 1;
-    el.secondsOut.textContent = `${seconds.toFixed(1)}s · ${frames}f`;
-    el.secondsOut.title = `${frames} frames at ${fps} fps`;
+    const deliveryFrames = Math.round(seconds * fps);
+    el.secondsOut.textContent = `${seconds.toFixed(1)}s · ${deliveryFrames}f @ ${fps}fps`;
+    el.secondsOut.title = `${frames} Wan frames at 16fps, delivered as ${deliveryFrames} frames at ${fps}fps`;
     paintRange(el.seconds);
   }
 
@@ -526,6 +536,11 @@
   function formPayload() {
     const [w, h] = (el.resolution.value || '832x480').split('x').map(Number);
     const keepAudio = el.keepAudio.checked;
+    const sourceDuration = Number(el.previewMotion.duration);
+    const maxSeconds = Number(el.seconds.max) || 30;
+    const seconds = el.autoDuration?.checked && Number.isFinite(sourceDuration) && sourceDuration > 0
+      ? Math.min(sourceDuration, maxSeconds)
+      : Number(el.seconds.value);
     return {
       engine: state.engine,
       prompt: el.prompt.value.trim(),
@@ -533,7 +548,7 @@
       width: String(w),
       height: String(h),
       fps: el.fps.value,
-      seconds: el.seconds.value,
+      seconds: String(seconds),
       steps: el.steps.value,
       cfg: el.cfg.value,
       seed: el.seed.value,
@@ -922,6 +937,7 @@
     el.engineNote = $('#engine-note');
     el.seconds = $('#seconds');
     el.secondsOut = $('#seconds-out');
+    el.autoDuration = $('#auto-duration');
     el.resolution = $('#resolution');
     el.steps = $('#steps');
     el.cfg = $('#cfg');
@@ -984,6 +1000,15 @@
       saveForm();
     });
 
+    el.autoDuration?.addEventListener('change', () => {
+      if (el.autoDuration.checked && Number.isFinite(el.previewMotion.duration)) {
+        autoSeconds(Number(el.previewMotion.duration));
+      } else {
+        updateSeconds();
+      }
+      saveForm();
+    });
+
     for (const [node, key] of [
       [el.seconds, 'seconds'],
       [el.steps, 'steps'],
@@ -994,7 +1019,13 @@
     ]) {
       node.addEventListener('input', () => {
         state.touched.add(key);
-        if (key === 'fps' || key === 'seconds') updateSeconds();
+        if (key === 'fps' || key === 'seconds') {
+          if (key === 'fps' && el.autoDuration?.checked && Number.isFinite(el.previewMotion.duration)) {
+            autoSeconds(Number(el.previewMotion.duration));
+          } else {
+            updateSeconds();
+          }
+        }
         saveForm();
       });
       if (node.tagName === 'SELECT') {

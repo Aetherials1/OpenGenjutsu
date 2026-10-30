@@ -200,7 +200,10 @@ os.environ["OG_MODELS_DIR"] = str(models_dir)
 
 # Install system dependencies and ComfyUI. GGUF support is always installed so the preset can be changed safely.
 run([sys.executable, "scripts/colab_setup.py", "system"], cwd=root)
-run([sys.executable, "scripts/colab_setup.py", "comfy", "--with-gguf"], cwd=root)
+run([
+    sys.executable, "scripts/colab_setup.py", "comfy",
+    "--with-gguf", "--with-animate-preprocess",
+], cwd=root)
 
 # Download with HF_TOKEN inherited from this process. It is never included in the command line.
 model_env = os.environ.copy()

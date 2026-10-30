@@ -53,6 +53,9 @@ class JobSpec:
     width: int = 832
     height: int = 480
     fps: float = 16.0
+    # Wan Animate is generated at its native 16 fps.  ``fps`` is the requested
+    # delivery rate; the render is retimed after sampling when it is higher.
+    model_fps: float = 16.0
     frames: int = 49
     steps: int = 6
     cfg: float = 1.0
@@ -71,8 +74,8 @@ class JobSpec:
 
     @property
     def duration(self) -> float:
-        if self.fps > 0:
-            return self.frames / self.fps
+        if self.model_fps > 0:
+            return self.frames / self.model_fps
         return float(self.motion_info.get("duration") or 0.0)
 
 
@@ -155,7 +158,8 @@ def placeholder_values(spec: JobSpec) -> dict[str, Any]:
         "shift": float(spec.shift),
         "width": int(spec.width),
         "height": int(spec.height),
-        "fps": float(spec.fps),
+        "fps": float(spec.model_fps),
+        "output_fps": float(spec.fps),
         "frames": int(spec.frames),
         "length": int(spec.frames),
         "duration": float(spec.duration),
@@ -230,6 +234,10 @@ class TemplateEngine(Engine):
         )
         if "frames" in manifest_defaults:
             base["frames"] = wan_frames(manifest_defaults["frames"])
+        if "model_fps" in manifest_defaults:
+            base["model_fps"] = float(manifest_defaults["model_fps"])
+        if "output_fps" in manifest_defaults:
+            base["fps"] = float(manifest_defaults["output_fps"])
         base["max_seconds"] = float(
             self.manifest.get("max_seconds", settings.default_max_seconds)
         )
@@ -303,6 +311,8 @@ class TemplateEngine(Engine):
 
         # Verify every input our template sets actually exists on the installed
         # node - this catches ComfyUI version drift before a render is queued.
+        # Newer ComfyUI exposes the native schema as a nested dict; older builds
+        # return the legacy ``required``/``optional`` shape directly.
         ignored_inputs = {"frame_load_cap", "skip_first_frames", "select_every_nth"}
         for node_id, node in self.template.items():
             if not isinstance(node, dict):
@@ -429,7 +439,7 @@ class TemplateEngine(Engine):
             if raw.suffix.lower() == ".mp4":
                 shutil.move(str(raw), render)
             else:
-                ensure_mp4(raw, render, fps=spec.fps)
+                ensure_mp4(raw, render, fps=spec.model_fps)
         except MediaError as exc:
             raise EngineError(f"could not convert render to mp4: {exc}") from exc
 

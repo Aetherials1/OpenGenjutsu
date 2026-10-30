@@ -179,15 +179,41 @@ def cmd_comfy(args: argparse.Namespace) -> int:
 
     run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], cwd=COMFY_DIR)
 
+    custom = COMFY_DIR / "custom_nodes"
+    custom.mkdir(exist_ok=True)
+
     if args.with_gguf:
-        custom = COMFY_DIR / "custom_nodes"
-        custom.mkdir(exist_ok=True)
         target = custom / "ComfyUI-GGUF"
         if not target.is_dir():
             run(["git", "clone", "--depth", "1", "https://github.com/city96/ComfyUI-GGUF.git", str(target)])
-            run([sys.executable, "-m", "pip", "install", "-q", "-r", str(target / "requirements.txt")], check=False)
+            requirements = target / "requirements.txt"
+            if requirements.exists():
+                run([sys.executable, "-m", "pip", "install", "-q", "-r", str(requirements)], check=False)
         else:
             log("ComfyUI-GGUF already installed")
+
+    if args.with_animate_preprocess:
+        target = custom / "ComfyUI-WanAnimatePreprocess"
+        if not target.is_dir():
+            run(["git", "clone", "--depth", "1", "https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git", str(target)])
+        else:
+            log("ComfyUI-WanAnimatePreprocess already installed")
+        # The node uses ONNX YOLO/ViTPose models.  These packages are harmless
+        # for other engines and make the Wan Animate graph self-contained.
+        run([sys.executable, "-m", "pip", "install", "-q", "onnx", "onnxruntime-gpu"], check=False)
+
+        for repo, name in (
+            ("https://github.com/kijai/ComfyUI-segment-anything-2.git", "ComfyUI-segment-anything-2"),
+            ("https://github.com/kijai/ComfyUI-KJNodes.git", "ComfyUI-KJNodes"),
+        ):
+            target = custom / name
+            if not target.is_dir():
+                run(["git", "clone", "--depth", "1", repo, str(target)])
+            else:
+                log(f"{name} already installed")
+            requirements = target / "requirements.txt"
+            if requirements.exists():
+                run([sys.executable, "-m", "pip", "install", "-q", "-r", str(requirements)], check=False)
 
     log(f"ComfyUI ready at {COMFY_DIR}")
     return 0
@@ -510,6 +536,8 @@ def main() -> int:
     p = sub.add_parser("comfy", help="install/update ComfyUI")
     p.add_argument("--with-gguf", dest="with_gguf", action="store_true", default=True, help="install the GGUF loader node (default: enabled)")
     p.add_argument("--no-gguf", dest="with_gguf", action="store_false", help="skip GGUF loader node")
+    p.add_argument("--with-animate-preprocess", dest="with_animate_preprocess", action="store_true", default=True, help="install Wan Animate pose/face preprocessing nodes (default: enabled)")
+    p.add_argument("--no-animate-preprocess", dest="with_animate_preprocess", action="store_false", help="skip Wan Animate preprocessing nodes")
     p.set_defaults(func=cmd_comfy)
 
     p = sub.add_parser("models", help="download model weights")

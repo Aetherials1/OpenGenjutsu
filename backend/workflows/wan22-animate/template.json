@@ -20,6 +20,91 @@
     },
     "_meta": { "title": "Extract motion frames" }
   },
+  "20": {
+    "class_type": "OnnxDetectionModelLoader",
+    "inputs": {
+      "vitpose_model": "vitpose-l-wholebody.onnx",
+      "yolo_model": "yolov10m.onnx",
+      "onnx_device": "CUDAExecutionProvider"
+    },
+    "_meta": { "title": "Wan Animate pose/face detector" }
+  },
+  "21": {
+    "class_type": "PoseAndFaceDetection",
+    "inputs": {
+      "model": ["20", 0],
+      "images": ["2b", 0],
+      "width": "@width",
+      "height": "@height",
+      "retarget_image": ["1", 0],
+      "face_padding": 16
+    },
+    "_meta": { "title": "Extract face crops, pose and subject boxes" }
+  },
+  "22": {
+    "class_type": "DrawViTPose",
+    "inputs": {
+      "pose_data": ["21", 0],
+      "width": "@width",
+      "height": "@height",
+      "body_stick_width": -1,
+      "hand_stick_width": -1,
+      "draw_head": true
+    },
+    "_meta": { "title": "Render pose guidance" }
+  },
+  "23": {
+    "class_type": "DownloadAndLoadSAM2Model",
+    "inputs": {
+      "model": "sam2.1_hiera_base_plus-fp16.safetensors",
+      "segmentor": "video",
+      "device": "cuda",
+      "precision": "fp16"
+    },
+    "_meta": { "title": "Load SAM2 video segmenter" }
+  },
+  "24": {
+    "class_type": "Sam2Segmentation",
+    "inputs": {
+      "sam2_model": ["23", 0],
+      "image": ["2b", 0],
+      "keep_model_loaded": false,
+      "bboxes": ["21", 3]
+    },
+    "_meta": { "title": "Track source performer mask" }
+  },
+  "25": {
+    "class_type": "GrowMaskWithBlur",
+    "inputs": {
+      "mask": ["24", 0],
+      "expand": 10,
+      "incremental_expandrate": 0.0,
+      "tapered_corners": true,
+      "flip_input": false,
+      "blur_radius": 0.0,
+      "lerp_alpha": 1.0,
+      "decay_factor": 1.0,
+      "fill_holes": false
+    },
+    "_meta": { "title": "Grow performer mask" }
+  },
+  "26": {
+    "class_type": "BlockifyMask",
+    "inputs": {
+      "masks": ["25", 0],
+      "block_size": 32
+    },
+    "_meta": { "title": "Align mask to Wan latent blocks" }
+  },
+  "27": {
+    "class_type": "DrawMaskOnImage",
+    "inputs": {
+      "image": ["2b", 0],
+      "mask": ["26", 0],
+      "color": "0, 0, 0"
+    },
+    "_meta": { "title": "Black out source performer" }
+  },
   "3": {
     "class_type": "CLIPLoader",
     "inputs": {
@@ -88,8 +173,10 @@
       "batch_size": 1,
       "clip_vision_output": ["5b", 0],
       "reference_image": ["1", 0],
-      "pose_video": ["2b", 0],
-      "face_video": ["2b", 0],
+      "pose_video": ["22", 0],
+      "face_video": ["21", 1],
+      "background_video": ["27", 0],
+      "character_mask": ["26", 0],
       "continue_motion_max_frames": 1,
       "video_frame_offset": 0
     },

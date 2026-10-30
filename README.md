@@ -26,7 +26,7 @@ run entirely on your machine with a local GPU.
 | | |
 |---|---|
 | **In** | motion video (the performance to copy, any length/fps/size) + character image |
-| **Out** | mp4 at 480p/720p, 1–8 s, 16 fps, character performing the motion |
+| **Out** | mp4 at 480p/720p, source-length or 1–30 s, up to 60 fps, character performing the motion |
 | **Audio** | toggle: mux the motion clip's original track (`aac 192k`, trimmed/padded to the render's exact length, gentle fade-out) or leave the render silent |
 | **Engines** | Wan 2.2 Animate 14B (fp8 / GGUF Q4), Wan 2.1 VACE 1.3B, and a GPU-free mock |
 

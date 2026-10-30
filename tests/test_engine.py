@@ -127,6 +127,16 @@ for directory in templates:
     check(any(node.get("class_type") in {"SaveVideo", "SaveAnimatedWEBP"} for node in graph.values()),
           f"{directory.name}: has a video output node")
 
+    if directory.name in {"wan22-animate-gguf", "wan22-animate"}:
+        wan_node = "9"
+        check(graph[wan_node]["inputs"]["pose_video"] == ["22", 0], f"{directory.name}: uses rendered pose guidance")
+        check(graph[wan_node]["inputs"]["face_video"] == ["21", 1], f"{directory.name}: uses cropped face guidance")
+        check(graph[wan_node]["inputs"]["background_video"] == ["27", 0], f"{directory.name}: blacked-out background guidance")
+        check(graph[wan_node]["inputs"]["character_mask"] == ["26", 0], f"{directory.name}: tracked character mask")
+        check(graph["24"]["inputs"]["bboxes"] == ["21", 3], f"{directory.name}: SAM2 follows detected subject boxes")
+    if directory.name == "wan22-animate-gguf":
+        check(graph["12"]["class_type"] == "TrimVideoLatent", "wan22-animate-gguf: trims conditioning latent")
+
 # --------------------------------------------------------------------------- #
 print("\nplaceholder injection")
 graph = {

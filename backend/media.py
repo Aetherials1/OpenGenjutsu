@@ -436,6 +436,52 @@ def strip_audio(video: str | Path, dest: str | Path) -> Path:
 # --------------------------------------------------------------------------- #
 
 
+def retime_video(
+    source: str | Path,
+    dest: str | Path,
+    *,
+    fps: float,
+    source_fps: float = 0.0,
+    duration: float | None = None,
+) -> Path:
+    """Deliver a render at ``fps`` without changing its duration.
+
+    Wan Animate samples at 16 fps.  For higher delivery rates, motion
+    interpolation creates in-between frames instead of merely duplicating
+    frames; the diffusion model still only has to generate its native frames.
+    """
+    src, out = Path(source), Path(dest)
+    target = max(1.0, float(fps))
+    source_rate = float(source_fps or 0.0)
+    if not source_rate:
+        source_rate = float(probe(src).get("fps") or 0.0)
+
+    if source_rate and target > source_rate + 0.01:
+        vf = (
+            f"minterpolate=fps={target:g}:mi_mode=mci:mc_mode=aobmc:"
+            "me_mode=bidir:vsbmc=1"
+        )
+    else:
+        vf = f"fps={target:g}"
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        ffmpeg_exe(), "-y", "-v", "error", "-i", str(src),
+        "-vf", vf,
+    ]
+    if duration and duration > 0:
+        command += ["-t", f"{float(duration):g}"]
+    command += [
+        "-c:v", "libx264", "-preset", "veryfast",
+        "-crf", "18", "-pix_fmt", "yuv420p", "-an",
+        "-movflags", "+faststart", str(out),
+    ]
+    run(command, timeout=1800)
+    if not out.exists() or out.stat().st_size == 0:
+        raise MediaError("video retiming produced an empty file")
+    return out
+
+
 def ensure_mp4(source: str | Path, dest: str | Path, fps: float | None = None) -> Path:
     """Convert anything ffmpeg can read (e.g. animated webp) into a clean H.264 mp4."""
     src, out = Path(source), Path(dest)
@@ -659,6 +705,8 @@ def prepare_motion(
             "-y",
             "-v",
             "error",
+            "-ss",
+            f"{max(0.0, float(start_seconds)):g}",
             "-stream_loop",
             "-1",
             "-i",

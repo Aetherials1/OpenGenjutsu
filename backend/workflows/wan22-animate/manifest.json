@@ -3,7 +3,7 @@
   "label": "Wan 2.2 Animate 14B",
   "priority": 30,
   "maturity": "experimental",
-  "description": "Pose + face driven character animation: keeps your reference identity while copying the body and facial motion of the driving clip. Highest fidelity, heaviest on VRAM - designed for 14B fp8/GGUF on a T4 with ComfyUI's low-VRAM mode.",
+  "description": "Wan 2.2 Animate Mix replacement pipeline: SAM2 removes the source performer, and pose plus face guidance transfers the driving motion into the uploaded character. Highest fidelity, heaviest on VRAM.",
   "notes": "Needs ~10 GB upload + ComfyUI lowvram. Expect 12-25 min for a 4 s 480p clip on a free T4. If preflight reports missing nodes, either update ComfyUI or use the wan21-vace engine.",
   "defaults": {
     "width": 832,
@@ -14,12 +14,20 @@
     "cfg": 1.0,
     "shift": 8.0
   },
-  "max_seconds": 6,
+  "max_seconds": 30,
   "min_vram_mb": 22000,
   "required_nodes": [
     "LoadImage",
     "LoadVideo",
     "GetVideoComponents",
+    "OnnxDetectionModelLoader",
+    "PoseAndFaceDetection",
+    "DrawViTPose",
+    "DownloadAndLoadSAM2Model",
+    "Sam2Segmentation",
+    "GrowMaskWithBlur",
+    "BlockifyMask",
+    "DrawMaskOnImage",
     "CLIPLoader",
     "VAELoader",
     "CLIPVisionLoader",
@@ -32,11 +40,15 @@
     "SaveVideo",
     "WanAnimateToVideo"
   ],
+  "replacement_mode": "sam2_mix",
   "required_models": [
     "diffusion_models/wan2.2_animate_14B_fp8_e4m3fn.safetensors",
     "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
     "vae/wan_2.1_vae.safetensors",
-    "clip_vision/clip_vision_h.safetensors"
+    "clip_vision/clip_vision_h.safetensors",
+    "detection/yolov10m.onnx",
+    "detection/vitpose-l-wholebody.onnx",
+    "sam2/sam2.1_hiera_base_plus-fp16.safetensors"
   ],
   "speed_modes": {
     "lightning": {

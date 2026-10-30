@@ -296,8 +296,18 @@ async def create_job(
     width = _snap(int(width or defaults["width"]), 16)
     height = _snap(int(height or defaults["height"]), 16)
     fps = max(1.0, min(60.0, float(fps or defaults["fps"])))
-    seconds = max(0.5, min(max_seconds, float(seconds or 4.0)))
-    frames = wan_frames(int(round(seconds * fps)))
+    requested_seconds = max(0.5, float(seconds or 4.0))
+    seconds = min(max_seconds, requested_seconds)
+    if requested_seconds > max_seconds:
+        # One API job is one Wan window. The UI caps the request too; keeping the
+        # explicit clamp here prevents an oversized latent from reaching ComfyUI.
+        pass
+    # Wan Animate's conditioning and checkpoint are trained at 16 fps.  Keep
+    # sampling at that native rate, then deliver 24/30/60 fps by interpolation
+    # after generation.  This avoids pretending that 60 fps gives 60 distinct
+    # diffusion frames and keeps the compute cost bounded.
+    model_fps = min(16.0, fps)
+    frames = wan_frames(int(round(seconds * model_fps)))
     steps = max(1, min(60, int(steps or defaults["steps"])))
     cfg = max(0.0, min(20.0, float(cfg if cfg is not None else defaults["cfg"])))
     shift = max(0.0, min(20.0, float(shift)))
@@ -313,8 +323,9 @@ async def create_job(
             "width": width,
             "height": height,
             "fps": fps,
+            "model_fps": model_fps,
             "frames": frames,
-            "seconds": round(frames / fps, 3),
+            "seconds": round(frames / model_fps, 3),
             "steps": steps,
             "cfg": cfg,
             "shift": shift,

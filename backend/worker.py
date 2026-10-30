@@ -22,6 +22,7 @@ from .media import (
     prepare_character,
     prepare_motion,
     probe,
+    retime_video,
     strip_audio,
     thumbnail,
 )
@@ -244,7 +245,7 @@ class JobRunner:
                 prepared / "motion.mp4",
                 width=spec.width,
                 height=spec.height,
-                fps=spec.fps,
+                fps=spec.model_fps,
                 frames=spec.frames,
                 fit=str(job.params.get("fit") or "crop"),
             )
@@ -276,6 +277,22 @@ class JobRunner:
         )
         if not result.path.exists():
             raise EngineError("engine reported success but produced no file")
+
+        # Generate at Wan's native 16 fps, then optionally deliver 24/30/60 fps.
+        # This preserves the requested duration while avoiding a 4x latent cost.
+        target_fps = float(spec.fps)
+        if abs(target_fps - float(spec.model_fps)) > 0.01:
+            delivered = job.workdir / "render-delivered.mp4"
+            retime_video(
+                result.path,
+                delivered,
+                fps=target_fps,
+                source_fps=float(spec.model_fps),
+                duration=float(spec.duration),
+            )
+            result.path = delivered
+            result.meta["fps_requested"] = target_fps
+            result.meta["fps_model"] = float(spec.model_fps)
         return result
 
     def _build_spec(self, job: Job) -> JobSpec:
@@ -296,6 +313,7 @@ class JobRunner:
             width=int(params.get("width") or settings.default_width),
             height=int(params.get("height") or settings.default_height),
             fps=float(params.get("fps") or settings.default_fps),
+            model_fps=float(params.get("model_fps") or min(16.0, float(params.get("fps") or settings.default_fps))),
             frames=int(params.get("frames") or 49),
             steps=int(params.get("steps") or 6),
             cfg=float(params.get("cfg") or 1.0),

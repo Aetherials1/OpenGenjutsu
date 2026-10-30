@@ -3,7 +3,7 @@
   "label": "Wan Animate 2 (14B DiT SOTA)",
   "priority": 1,
   "maturity": "stable",
-  "description": "Alibaba Tongyi Lab's newest state-of-the-art character animation DiT. Directly reads driving video in the transformer for photorealistic full-body motion, stable hands, and face fidelity. Distilled 10-step fast sampler.",
+  "description": "Alibaba Tongyi Lab's newest state-of-the-art character animation DiT. Copies motion, hands and facial movement from the driving video into the reference character. This engine is pose-driven; use Wan 2.2 Animate Mix for source-performer removal and true replacement conditioning.",
   "notes": "Uses native WanAnimate2ToVideo. Runs in INT8 on free 16 GB T4 (~3-5 min), or ultra-fast on Colab Pro L4 / A100 GPUs (~40-60s).",
   "defaults": {
     "width": 832,
@@ -14,12 +14,15 @@
     "cfg": 3.0,
     "shift": 5.0
   },
-  "max_seconds": 8,
+  "max_seconds": 30,
   "min_vram_mb": 14000,
   "required_nodes": [
     "LoadImage",
     "LoadVideo",
     "GetVideoComponents",
+    "OnnxDetectionModelLoader",
+    "PoseAndFaceDetection",
+    "DrawViTPose",
     "CLIPLoader",
     "VAELoader",
     "CLIPVisionLoader",
@@ -33,10 +36,13 @@
     "CreateVideo",
     "SaveVideo"
   ],
+  "replacement_mode": "pose_only",
   "required_models": [
     "diffusion_models/wan_animate_2_int8_convrot.safetensors",
     "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
     "clip_vision/clip_vision_h.safetensors",
-    "vae/wan_2.1_vae.safetensors"
+    "vae/wan_2.1_vae.safetensors",
+    "detection/yolov10m.onnx",
+    "detection/vitpose-l-wholebody.onnx"
   ]
 }
