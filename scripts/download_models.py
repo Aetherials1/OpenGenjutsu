@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 """Download the model files ComfyUI needs for each OpenGenjutsu engine.
 
-Files are pulled from Hugging Face into a cache directory (on Colab: your Google
-Drive, so downloads survive a runtime restart) and then symlinked into
-``ComfyUI/models/<type>/``.
+Files are pulled from Hugging Face into a cache directory (on Colab: ephemeral
+storage by default, or Google Drive only when explicitly selected) and then
+symlinked into ``ComfyUI/models/<type>/``. Set ``HF_TOKEN`` or
+``HUGGINGFACE_HUB_TOKEN`` to avoid anonymous API rate limits.
 
 Exact filenames change upstream, so every spec is a glob matched against the real
 repository file list. Use ``--dry-run`` to see what would be fetched.
@@ -125,11 +126,15 @@ def repo_files(repo_id: str) -> list[str]:
     """List every file in a HF repo (works for public repos, no auth needed)."""
     from huggingface_hub import HfApi
 
-    api = HfApi()
+    token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_HUB_TOKEN")
+    api = HfApi(token=token or None)
     try:
         return [item.rfilename for item in api.list_repo_tree(repo_id, recursive=True) if hasattr(item, "rfilename")]
     except Exception as exc:  # noqa: BLE001
-        raise SystemExit(f"cannot list {repo_id}: {exc}") from exc
+        raise SystemExit(
+            f"cannot list {repo_id}: {exc}. Add a Hugging Face read token as "
+            "HF_TOKEN in Colab Secrets and rerun this cell."
+        ) from exc
 
 
 def match(repo_id: str, patterns: list[str], cache: dict[str, list[str]]) -> list[str]:
@@ -230,6 +235,7 @@ def main() -> int:
                 repo_id=repo,
                 filename=name,
                 local_dir=str(cache_root / repo.replace("/", "__")),
+                token=os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_HUB_TOKEN") or None,
                 resume_download=True,
             )
             link_into(Path(path), comfy_root / "models", spec["dest"])

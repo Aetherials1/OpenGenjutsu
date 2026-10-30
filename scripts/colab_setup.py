@@ -66,6 +66,16 @@ def pip(*args: str) -> None:
     run([sys.executable, "-m", "pip", "install", "-q", *args])
 
 
+def hf_environment(env: dict[str, str] | None = None) -> dict[str, str]:
+    """Return a child environment with the HF token aliases normalized."""
+    child = dict(env or os.environ)
+    token = child.get("HF_TOKEN") or child.get("HUGGINGFACE_HUB_TOKEN")
+    if token:
+        child["HF_TOKEN"] = token
+        child["HUGGINGFACE_HUB_TOKEN"] = token
+    return child
+
+
 def http_ok(url: str, timeout: float = 3.0) -> bool:
     try:
         import requests
@@ -146,7 +156,7 @@ def cmd_system(args: argparse.Namespace) -> int:
     if missing or args.force:
         log(f"installing: {', '.join(missing) or 'all (forced)'}")
         run(["apt-get", "update", "-qq"], check=False)
-        run(["apt-get", "install", "-y", "-qq", "ffmpeg", "git", "curl"], check=False)
+        run(["apt-get", "install", "-y", "-qq", "ffmpeg", "git", "curl"], check=False, env=hf_environment())
     else:
         log("ffmpeg / git already present")
 
@@ -206,7 +216,7 @@ def cmd_models(args: argparse.Namespace) -> int:
         cmd.append("--dry-run")
     if args.quant:
         cmd += ["--quant", args.quant]
-    return run(cmd, check=False)
+    return run(cmd, check=False, env=hf_environment())
 
 
 def comfy_flags(profile: str) -> list[str]:

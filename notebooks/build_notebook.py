@@ -1,11 +1,5 @@
 #!/usr/bin/env python
-"""Generate ``notebooks/OpenGenjutsu_Colab.ipynb``.
-
-Keeping the notebook generated means the cells stay reviewable as plain Python
-instead of a 900-line JSON blob. Re-run after editing cells:
-
-    python notebooks/build_notebook.py
-"""
+"""Generate the streamlined OpenGenjutsu Colab notebook."""
 
 from __future__ import annotations
 
@@ -29,418 +23,232 @@ def code(source: str) -> dict:
     }
 
 
-CELLS: list[dict] = []
-
-CELLS.append(
+CELLS: list[dict] = [
     md(
         """
-# OpenGenjutsu — motion transfer on this Colab GPU
+# OpenGenjutsu — one-click Colab launcher
 
-Upload a **motion video** and a **character image**, get back your character
-performing that motion, with an optional carry-over of the clip's original audio.
+Upload a **motion video** and a **character image** and generate a character motion-transfer video.
+This notebook runs ComfyUI, OpenGenjutsu, and a Cloudflare tunnel entirely inside the Colab runtime.
 
-This notebook starts three things inside the runtime:
+## Quick start
 
-| | |
-|---|---|
-| **ComfyUI** `:8188` | the diffusion engine (localhost only) |
-| **OpenGenjutsu backend** `:7860` | API, job queue, all ffmpeg / audio work |
-| **cloudflared** | a public HTTPS URL for the backend |
+1. Select **Runtime → Change runtime type → T4 GPU** (or L4/A100).
+2. Add your Hugging Face token in Colab **Secrets** as `HF_TOKEN`.
+3. Run the **Settings** cell, then the **ONE-CLICK START** cell.
+4. Open the printed link and upload your media.
 
-Then you open that URL in any browser — this machine, your phone, whatever.
-
-**Before you start:** `Runtime → Change runtime type → T4 GPU`.
-Run the cells in order. Re-running any cell is safe.
+The default `animate-q4` preset uses **Wan 2.2 Animate 14B GGUF Q4**, the closest open model
+for Higgsfield-style character replacement that fits a 15 GB T4. Nothing is written to Google Drive
+unless you explicitly set `USE_DRIVE = True`.
 """
-    )
-)
-
-CELLS.append(
+    ),
     md(
         """
-## 1 · Settings
+## Settings
 
-* `REPO_URL` — git URL for this project (or leave empty if using uploaded zip).
-* `GH_TOKEN` — optional GitHub Personal Access Token (or add `GH_TOKEN` in Colab Secrets 🔑).
-* `ZIP_PATH` — path for uploaded `OpenGenjutsu.zip` (drag & drop into Colab files panel).
-* `PRESET` — which weights to fetch:
-  * `animate2` — **Wan-Animate-2 14B DiT (NEW SOTA)**: Alibaba's newest model, distilled 10-step, direct video-in-transformer motion transfer with stable hands and faces *(recommended)*
-  * `vace` — Wan 2.1 VACE 1.3B, ≈11 GB, works everywhere, 2–4 min per 4 s clip *(lightest & fastest)*
-  * `animate-q4` — Wan 2.2 Animate 14B GGUF Q4, ≈14 GB, low-VRAM 14B quant
-  * `animate` — Wan 2.2 / Animate 14B fp8, needs >22 GB VRAM (for A100/L4 on Colab Pro)
-* `USE_DRIVE` — cache weights in Google Drive (leave False if your Drive is full; weights download straight to Colab's ephemeral disk instead).
-* `OG_TOKEN` — your password for the web UI. Set a fixed word (e.g. "genjutsu77") to stay logged in across restarts, or leave empty for a random one.
+Tokens are read from Colab Secrets first, then from the values below. Add these secrets using the
+key icon in the left sidebar:
+
+- `HF_TOKEN` — recommended; prevents Hugging Face rate-limit errors while listing/downloading weights.
+- `GH_TOKEN` — only needed if `REPO_URL` points to a private GitHub repository.
+
+A Hugging Face **read** token is sufficient. Never paste a write/admin token into a shared notebook.
 """
-    )
-)
-
-CELLS.append(
+    ),
     code(
         """
 import os
 
-REPO_URL   = "https://github.com/Aetherials1/OpenGenjutsu.git"  # or leave empty if using zip
-GH_TOKEN   = ""                                    # GitHub token if repo is private (or Colab Secrets)
-ZIP_PATH   = "/content/OpenGenjutsu.zip"           # drag & drop OpenGenjutsu.zip into Colab files
+# Source acquisition. If git cannot access the repository, the launcher asks you to upload the zip.
+REPO_URL = "https://github.com/Aetherials1/OpenGenjutsu.git"
+ZIP_PATH = "/content/OpenGenjutsu.zip"
 PROJECT_DIR = "/content/OpenGenjutsu"
 
-PRESET     = "animate2"      # "animate2" (New SOTA DiT) | "vace" (fastest, light) | "animate-q4" | "animate"
-USE_DRIVE  = False           # False = use Colab's free ~100 GB disk (leaves your Google Drive untouched!)
-OG_TOKEN   = ""              # set a fixed secret (e.g. "genjutsu77") to stay logged in across restarts, or leave empty
-ENGINE     = "auto"          # "auto" | "wan-animate-2" | "wan21-vace" | "wan22-animate-gguf" | "wan22-animate" | "mock"
+# Model preset. animate-q4 is recommended for a free 15 GB T4.
+# Options: animate-q4, animate2, vace, animate, all
+PRESET = "animate-q4"
+USE_DRIVE = False  # False keeps weights on Colab's ephemeral disk and never mounts Drive.
 
+# Optional direct values. Prefer Colab Secrets for tokens.
+HF_TOKEN = ""
+GH_TOKEN = ""
+OG_TOKEN = ""  # Set a fixed UI password, or leave blank for a new random password per runtime.
+ENGINE = "auto"
+
+
+def secret(*names: str) -> str:
+    try:
+        from google.colab import userdata
+        for name in names:
+            try:
+                value = userdata.get(name)
+            except Exception:
+                value = ""
+            if value:
+                return str(value).strip()
+    except Exception:
+        pass
+    return ""
+
+HF_TOKEN = HF_TOKEN.strip() or secret("HF_TOKEN", "HUGGINGFACE_TOKEN")
+GH_TOKEN = GH_TOKEN.strip() or secret("GH_TOKEN", "GITHUB_TOKEN")
+
+if HF_TOKEN:
+    os.environ["HF_TOKEN"] = HF_TOKEN
+    os.environ["HUGGINGFACE_HUB_TOKEN"] = HF_TOKEN
+if GH_TOKEN:
+    os.environ["GH_TOKEN"] = GH_TOKEN
 os.environ["OG_PRESET"] = PRESET
+os.environ["OG_ENGINE"] = ENGINE
+
+print(f"Preset: {PRESET}")
+print(f"Hugging Face token: {'configured' if HF_TOKEN else 'NOT configured (rate limits may apply)'}")
+print(f"GitHub token: {'configured' if GH_TOKEN else 'not configured'}")
+print(f"Google Drive: {'enabled' if USE_DRIVE else 'disabled'}")
 """
-    )
-)
-
-CELLS.append(
-    md("## 2 · Check the GPU")
-)
-
-CELLS.append(
+    ),
+    md("## ONE-CLICK START\n\nRun this cell once after a fresh runtime. It installs everything, downloads the selected weights, starts the services, and prints an authenticated URL."),
     code(
         """
-!nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
-
-import torch
-if torch.cuda.is_available():
-    name = torch.cuda.get_device_name(0)
-    free, total = torch.cuda.mem_get_info()
-    total_gb = total / 1024**3
-    print(f"torch {torch.__version__} | {name} | {total_gb:.1f} GB total, {free / 1024**3:.1f} GB free")
-    if total_gb >= 20:
-        print(f"🚀 Colab Pro / High-VRAM GPU detected ({name})! Full-speed inference + 720p HD unlocked.")
-    else:
-        print(f"⚡ Standard GPU detected ({name}). Memory-efficient mode enabled.")
-else:
-    print("NO CUDA GPU. Runtime -> Change runtime type -> T4 GPU, then re-run.")
-"""
-    )
-)
-
-CELLS.append(
-    md(
-        """
-## 3 · Get the project
-
-Either clones `REPO_URL`, unpacks `ZIP_PATH`, or reuses an existing
-`/content/OpenGenjutsu`.
-"""
-    )
-)
-
-CELLS.append(
-    code(
-        """
-import os, pathlib, shutil, subprocess
+import base64
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import time
 
 root = pathlib.Path(PROJECT_DIR)
 zip_path = pathlib.Path(ZIP_PATH)
 
-def unpack_zip(src: pathlib.Path, dst: pathlib.Path):
-    print(f"Unpacking {src} -> {dst}...")
-    tmp = pathlib.Path("/content/_og_unzip")
+
+def run(command, *, cwd=None, env=None, label=None, check=True):
+    shown = " ".join(str(x) for x in command)
+    print(f"\\n$ {shown}")
+    result = subprocess.run(command, cwd=str(cwd) if cwd else None, env=env)
+    if check and result.returncode != 0:
+        raise RuntimeError(f"{label or command[0]} failed with exit code {result.returncode}")
+    return result.returncode
+
+
+def unpack_project(src: pathlib.Path):
+    print(f"Unpacking {src}...")
+    tmp = pathlib.Path("/content/_ogenjutsu_unzip")
     shutil.rmtree(tmp, ignore_errors=True)
     shutil.unpack_archive(str(src), str(tmp))
     matches = [p for p in tmp.rglob("backend") if (p / "main.py").is_file()]
     if not matches:
-        raise RuntimeError(f"Could not find backend/main.py inside {src}")
-    source_dir = matches[0].parent
-    dst.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(str(source_dir), str(dst), dirs_exist_ok=True)
+        raise RuntimeError("The uploaded archive does not contain backend/main.py")
+    source = matches[0].parent
+    root.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(str(source), str(root), dirs_exist_ok=True)
     shutil.rmtree(tmp, ignore_errors=True)
-    print("Project successfully unpacked from zip!")
+    print(f"Project ready: {root}")
 
-# Check if already installed
-if (root / "backend" / "main.py").is_file():
-    print(f"OpenGenjutsu already present at {PROJECT_DIR}.")
-    if (root / ".git").is_dir():
-        print("Pulling latest git changes...")
-        subprocess.run(["git", "-C", PROJECT_DIR, "pull", "--ff-only"], capture_output=True)
-else:
-    token = (GH_TOKEN or "").strip()
-    if not token:
-        try:
-            from google.colab import userdata
-            token = (userdata.get("GH_TOKEN") or userdata.get("GITHUB_TOKEN") or "").strip()
-        except Exception:
-            token = ""
 
-    obtained = False
+# Obtain source. An uploaded zip is preferred when available; otherwise use git.
+if zip_path.is_file():
+    unpack_project(zip_path)
+elif not (root / "backend" / "main.py").is_file():
+    if not REPO_URL.strip():
+        raise RuntimeError("Set REPO_URL or upload OpenGenjutsu.zip to the Colab Files panel.")
 
-    # Priority 1: If an uploaded zip exists and no GitHub token is given, unpack immediately
-    if zip_path.is_file() and not token:
-        print(f"Found uploaded zip at {zip_path}!")
-        unpack_zip(zip_path, root)
-        obtained = (root / "backend" / "main.py").is_file()
+    root.mkdir(parents=True, exist_ok=True)
+    git_env = os.environ.copy()
+    git_env["GIT_TERMINAL_PROMPT"] = "0"
+    if GH_TOKEN:
+        # Pass the token through a temporary git config header; do not print or persist it.
+        auth = base64.b64encode(f"x-access-token:{GH_TOKEN}".encode()).decode()
+        git_env["GIT_CONFIG_COUNT"] = "1"
+        git_env["GIT_CONFIG_KEY_0"] = "http.extraheader"
+        git_env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: basic {auth}"
 
-    # Priority 2: Git fetch if REPO_URL is provided and not yet obtained
-    if not obtained and REPO_URL.strip():
-        clone_url = REPO_URL.strip()
-        if token and "github.com" in clone_url and "@" not in clone_url:
-            clone_url = clone_url.replace("https://github.com/", f"https://{token}@github.com/")
-        if not clone_url.endswith(".git") and "github.com" in clone_url:
-            clone_url += ".git"
+    if not (root / ".git").is_dir():
+        run(["git", "init"], cwd=root, env=git_env)
+        run(["git", "remote", "add", "origin", REPO_URL], cwd=root, env=git_env)
+    else:
+        run(["git", "remote", "set-url", "origin", REPO_URL], cwd=root, env=git_env)
 
-        print(f"Fetching repository from {REPO_URL}...")
-        root.mkdir(parents=True, exist_ok=True)
-        if not (root / ".git").is_dir():
-            subprocess.run(["git", "init"], cwd=PROJECT_DIR, capture_output=True)
-            subprocess.run(["git", "remote", "add", "origin", clone_url], cwd=PROJECT_DIR, capture_output=True)
-        else:
-            subprocess.run(["git", "remote", "set-url", "origin", clone_url], cwd=PROJECT_DIR, capture_output=True)
+    fetched = run(["git", "fetch", "--depth", "1", "origin"], cwd=root, env=git_env, check=False)
+    if fetched == 0:
+        run(["git", "checkout", "-B", "main", "FETCH_HEAD"], cwd=root, env=git_env)
+    else:
+        print("GitHub source was unavailable.")
 
-        fetch_res = subprocess.run(["git", "fetch", "--depth", "1", "origin"], cwd=PROJECT_DIR, capture_output=True, text=True)
-        if fetch_res.returncode == 0:
-            checkout_res = subprocess.run(["git", "checkout", "-B", "main", "FETCH_HEAD"], cwd=PROJECT_DIR, capture_output=True, text=True)
-            if checkout_res.returncode == 0 and (root / "backend" / "main.py").is_file():
-                print("Cloned and checked out successfully.")
-                obtained = True
-        else:
-            print("Git fetch failed (repository may be private or inaccessible).")
+if not (root / "backend" / "main.py").is_file():
+    print("\\nUpload the current OpenGenjutsu.zip in the file picker.")
+    try:
+        from google.colab import files
+        uploaded = files.upload()
+        selected = next((name for name in uploaded if name.lower().endswith((".zip", ".tar", ".tar.gz"))), None)
+        if not selected:
+            raise RuntimeError("Please upload OpenGenjutsu.zip")
+        shutil.copy2(selected, zip_path)
+        unpack_project(zip_path)
+    except ImportError as exc:
+        raise RuntimeError("Upload OpenGenjutsu.zip to /content, then run this cell again.") from exc
 
-    # Priority 3: Fall back to zip if git failed and zip exists
-    if not obtained and zip_path.is_file():
-        print(f"Falling back to uploaded zip at {zip_path}...")
-        unpack_zip(zip_path, root)
-        obtained = (root / "backend" / "main.py").is_file()
-
-    # If still not obtained, display clear instructions
-    if not (root / "backend" / "main.py").is_file():
-        print("\\n" + "=" * 68)
-        print("❌ Could not obtain OpenGenjutsu source code.")
-        print("\\nFix this with ONE of these simple options:")
-        print("  Option 1 (Easiest - No token needed):")
-        print("    Drag & drop 'OpenGenjutsu.zip' from your computer into the Colab")
-        print(f"    file browser (left panel) at {ZIP_PATH}, then run this cell again.")
-        print("  Option 2 (Using GitHub Personal Access Token):")
-        print("    Set GH_TOKEN = 'ghp_yourToken' in Cell 1, or add a secret")
-        print("    named 'GH_TOKEN' in Colab Secrets (the key icon 🔑 on left).")
-        print("  Option 3 (Make Repository Public):")
-        print("    In GitHub repository Settings -> Change visibility to Public.")
-        print("=" * 68 + "\\n")
-        raise SystemExit("Missing OpenGenjutsu files.")
-
-%cd {PROJECT_DIR}
-print("project ready:", os.getcwd())
-"""
-    )
-)
-
-CELLS.append(
-    md("## 4 · System packages (ffmpeg)")
-)
-
-CELLS.append(
-    code(
-        """
-!python scripts/colab_setup.py system
-"""
-    )
-)
-
-CELLS.append(
-    md(
-        """
-## 5 · Model cache on Drive
-
-Weights are big and Drive persists between sessions. Downloads go to
-`My Drive/OpenGenjutsu/models` and are symlinked into ComfyUI, so nothing is
-duplicated.
-"""
-    )
-)
-
-CELLS.append(
-    code(
-        """
-import os
-
-MODELS_DIR = "/content/OpenGenjutsu/models"
+# Choose ephemeral disk by default; mount Drive only when explicitly requested.
+models_dir = pathlib.Path(PROJECT_DIR) / "models"
 if USE_DRIVE:
     from google.colab import drive
     drive.mount("/content/drive")
-    MODELS_DIR = "/content/drive/MyDrive/OpenGenjutsu/models"
+    models_dir = pathlib.Path("/content/drive/MyDrive/OpenGenjutsu/models")
+models_dir.mkdir(parents=True, exist_ok=True)
+os.environ["OG_MODELS_DIR"] = str(models_dir)
 
-os.makedirs(MODELS_DIR, exist_ok=True)
-os.environ["OG_MODELS_DIR"] = MODELS_DIR
-print("model cache:", MODELS_DIR)
-"""
-    )
-)
+# Install system dependencies and ComfyUI. GGUF support is always installed so the preset can be changed safely.
+run([sys.executable, "scripts/colab_setup.py", "system"], cwd=root)
+run([sys.executable, "scripts/colab_setup.py", "comfy", "--with-gguf"], cwd=root)
 
-CELLS.append(
-    md(
-        """
-## 6 · Install ComfyUI
+# Download with HF_TOKEN inherited from this process. It is never included in the command line.
+model_env = os.environ.copy()
+if HF_TOKEN:
+    model_env["HF_TOKEN"] = HF_TOKEN
+    model_env["HUGGINGFACE_HUB_TOKEN"] = HF_TOKEN
+run([
+    sys.executable, "scripts/colab_setup.py", "models",
+    "--preset", PRESET, "--models-root", str(models_dir),
+], cwd=root, env=model_env)
 
-Clones/updates ComfyUI and installs its requirements. Adds the GGUF loader when
-`PRESET` is `animate-q4`.
-"""
-    )
-)
-
-CELLS.append(
-    code(
-        """
-import os
-
-cmd = "python scripts/colab_setup.py comfy --with-gguf"
-print("$", cmd)
-!{cmd}
-"""
-    )
-)
-
-CELLS.append(
-    md(
-        """
-## 7 · Download weights
-
-This is the long cell on a fresh runtime (≈11–14 GB). With `USE_DRIVE` the next
-session skips it. `--dry-run` is available if you want to see what would be
-fetched.
-"""
-    )
-)
-
-CELLS.append(
-    code(
-        """
-import os
-
-preset = globals().get("PRESET") or os.environ.get("OG_PRESET", "animate2")
-models_dir = globals().get("MODELS_DIR") or os.environ.get("OG_MODELS_DIR", "/content/OpenGenjutsu/models")
-
-cmd = f'python scripts/colab_setup.py models --preset {preset} --models-root "{models_dir}"'
-print("$", cmd)
-!{cmd}
-"""
-    )
-)
-
-CELLS.append(
-    md(
-        """
-## 8 · Launch OpenGenjutsu (ComfyUI + Backend + Tunnel)
-
-Boots ComfyUI, starts the OpenGenjutsu backend, and opens a secure Cloudflare tunnel.
-Your public web app link and Access Token will be printed directly in this cell when ready!
-"""
-    )
-)
-
-CELLS.append(
-    code(
-        """
-import os, secrets
-
+# Stop stale processes, start a clean backend, and create the tunnel.
+run([sys.executable, "scripts/colab_setup.py", "stop"], cwd=root, check=False)
+time.sleep(2)
+import secrets
+os.environ["OG_TOKEN"] = OG_TOKEN.strip() or secrets.token_urlsafe(12)
 os.environ["OG_ENGINE"] = ENGINE
-if not os.environ.get("OG_TOKEN"):
-    os.environ["OG_TOKEN"] = OG_TOKEN or secrets.token_urlsafe(12)
+print("\\nStarting OpenGenjutsu. Keep this cell output visible for the URL...")
+run([sys.executable, "scripts/colab_setup.py", "serve", "--tunnel"], cwd=root, env=os.environ.copy())
 
-print("ACCESS TOKEN:", os.environ["OG_TOKEN"])
-!python scripts/colab_setup.py serve --tunnel
+print("\\nRunning readiness check...")
+run([sys.executable, "scripts/colab_setup.py", "doctor"], cwd=root, env=os.environ.copy(), check=False)
 """
-    )
-)
-
-CELLS.append(
-    md(
-        """
-## 9 · Tunnel / Reconnect (Optional)
-
-If you ever need to view your active link again or restart the tunnel, run this cell.
-"""
-    )
-)
-
-CELLS.append(
+    ),
+    md("## Reconnect / health check\n\nUse this after a temporary tunnel disconnect. It does not redownload weights."),
     code(
         """
-!python scripts/colab_setup.py tunnel
+import os, pathlib, subprocess, sys
+root = pathlib.Path(PROJECT_DIR)
+subprocess.run([sys.executable, "scripts/colab_setup.py", "tunnel"], cwd=root, env=os.environ.copy())
+subprocess.run([sys.executable, "scripts/colab_setup.py", "doctor"], cwd=root, env=os.environ.copy())
 """
-    )
-)
-
-CELLS.append(
-    md(
-        """
-## 10 · Health & Doctor Check
-
-Verifies that all AI engines (Wan-Animate-2, VACE, etc.) are healthy and ready to render.
-"""
-    )
-)
-
-CELLS.append(
+    ),
+    md("## Stop and free the GPU"),
     code(
         """
-!python scripts/colab_setup.py doctor
+import pathlib, subprocess, sys
+root = pathlib.Path(PROJECT_DIR)
+subprocess.run([sys.executable, "scripts/colab_setup.py", "stop"], cwd=root)
 """
-    )
-)
-
-CELLS.append(
-    code(
-        """
-!python scripts/smoke_test.py --url http://127.0.0.1:7860 --token "$OG_TOKEN"
-"""
-    )
-)
-
-CELLS.append(
-    md(
-        """
-## Tips
-
-* **Keep the Colab tab open.** Closing it recycles the runtime and kills the
-  tunnel. A new session = re-run cells 3–9 (models are cached in Drive).
-* **Length is the main cost.** 3–4 s at 832×480 is the sweet spot on a T4.
-* **Steps** — 16 is a good VACE default; 8–12 is noticeably faster with little
-  loss. CFG 1.0 with a distilled LoRA is fastest where supported.
-* **Prompt** describes style/lighting; identity comes from the image, motion from
-  the video. Keep it short.
-* **Audio** — the toggle attaches the motion clip's own track, trimmed or padded
-  to the render's exact length. If the clip has no audio track you'll get a
-  warning before rendering.
-* **Compare tab** plays source and result side by side.
-
-## Troubleshooting
-
-* `doctor` blocked on a missing node → `docs/TROUBLESHOOTING.md` (or pick another
-  engine in the UI).
-* CUDA OOM → shorter clip, 832×480, or `PRESET = "vace"`.
-* No tunnel URL → re-run cell 9; if DNS is filtered, try a phone hotspot.
-* Everything is logged in `/content/ogenjutsu-logs/`.
-"""
-    )
-)
-
-CELLS.append(
-    md("## Stop everything / free the GPU")
-)
-
-CELLS.append(
-    code(
-        """
-!python scripts/colab_setup.py stop
-!python scripts/colab_setup.py status
-"""
-    )
-)
-
+    ),
+]
 
 NOTEBOOK = {
     "cells": CELLS,
     "metadata": {
         "accelerator": "GPU",
-        "colab": {
-            "provenance": [],
-            "gpuType": "T4",
-            "toc_visible": True,
-        },
+        "colab": {"provenance": [], "gpuType": "T4", "toc_visible": True},
         "kernelspec": {"display_name": "Python 3", "name": "python3"},
         "language_info": {"name": "python"},
     },
