@@ -130,19 +130,22 @@ CELLS.append(
 import os, pathlib, shutil, subprocess
 
 root = pathlib.Path(PROJECT_DIR)
-if not (root / "backend" / "main.py").is_file():
+
+if os.path.exists(ZIP_PATH) and not REPO_URL:
+    print(f"Unpacking {ZIP_PATH} -> {PROJECT_DIR}...")
     shutil.rmtree("/content/_og_unzip", ignore_errors=True)
     shutil.rmtree(PROJECT_DIR, ignore_errors=True)
+    shutil.unpack_archive(ZIP_PATH, "/content/_og_unzip")
+    found = next(p for p in pathlib.Path("/content/_og_unzip").rglob("backend") if (p / "main.py").is_file())
+    shutil.move(str(found.parent), PROJECT_DIR)
+elif not (root / "backend" / "main.py").is_file():
     if REPO_URL:
+        print(f"Cloning {REPO_URL}...")
         subprocess.run(["git", "clone", "--depth", "1", REPO_URL, PROJECT_DIR], check=True)
-    elif os.path.exists(ZIP_PATH):
-        shutil.unpack_archive(ZIP_PATH, "/content/_og_unzip")
-        found = next(p for p in pathlib.Path("/content/_og_unzip").rglob("backend") if (p / "main.py").is_file())
-        shutil.move(str(found.parent), PROJECT_DIR)
     else:
-        raise SystemExit("Set REPO_URL above, or upload the project zip to " + ZIP_PATH)
+        raise SystemExit("Please upload OpenGenjutsu.zip to " + ZIP_PATH + " or set REPO_URL.")
 else:
-    if REPO_URL:
+    if (root / ".git").is_dir():
         subprocess.run(["git", "-C", PROJECT_DIR, "pull", "--ff-only"], check=False)
 
 %cd {PROJECT_DIR}
@@ -239,10 +242,10 @@ CELLS.append(
 CELLS.append(
     md(
         """
-## 8 · Start the engines
+## 8 · Launch OpenGenjutsu (ComfyUI + Backend + Tunnel)
 
-Boots ComfyUI (GPU flags chosen from your VRAM) then the backend, and waits
-until both answer. It also prints which engine will be used.
+Boots ComfyUI, starts the OpenGenjutsu backend, and opens a secure Cloudflare tunnel.
+Your public web app link and Access Token will be printed directly in this cell when ready!
 """
     )
 )
@@ -257,14 +260,19 @@ if not os.environ.get("OG_TOKEN"):
     os.environ["OG_TOKEN"] = OG_TOKEN or secrets.token_urlsafe(12)
 
 print("ACCESS TOKEN:", os.environ["OG_TOKEN"])
-!python scripts/colab_setup.py serve
+!python scripts/colab_setup.py serve --tunnel
 """
     )
 )
 
 CELLS.append(
-    md("## 9 · Open the tunnel")
+    md(
+        """
+## 9 · Tunnel / Reconnect (Optional)
 
+If you ever need to view your active link again or restart the tunnel, run this cell.
+"""
+    )
 )
 
 CELLS.append(
@@ -278,19 +286,9 @@ CELLS.append(
 CELLS.append(
     md(
         """
-### 👉 Open that URL
+## 10 · Health & Doctor Check
 
-Paste the printed token into the app's ⚙ **Settings** the first time; the browser
-remembers it.
-
-Everything below is optional quality-of-life.
-
----
-
-## 10 · Verify
-
-`doctor` shows engine readiness; the smoke test renders a synthetic clip through
-the real queue, including both states of the audio toggle.
+Verifies that all AI engines (Wan-Animate-2, VACE, etc.) are healthy and ready to render.
 """
     )
 )

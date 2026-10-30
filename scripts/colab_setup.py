@@ -295,6 +295,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
         return 1
 
     cmd_status(args)
+    if getattr(args, "tunnel", False):
+        return cmd_tunnel(args)
+
     log("")
     log("Next: open a tunnel so your browser can reach this runtime.")
     log("    !python scripts/colab_setup.py tunnel")
@@ -303,7 +306,33 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 def cmd_tunnel(args: argparse.Namespace) -> int:
     step("cloudflared tunnel")
-    binary = Path(args.binary) if args.binary else Path("/usr/local/bin/cloudflared")
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    tunnel_log = LOG_DIR / "tunnel.log"
+
+    pids = load_pids()
+    tunnel_pid = pids.get("tunnel")
+    if tunnel_pid:
+        try:
+            os.kill(int(tunnel_pid), 0)
+            if tunnel_log.exists():
+                text = tunnel_log.read_text(encoding="utf-8", errors="replace")
+                for token in text.replace("\r", " ").split():
+                    if token.startswith("https://") and "trycloudflare.com" in token:
+                        tok = os.getenv("OG_TOKEN", "") or (load_pids().get("token") or "")
+                        step("READY")
+                        print(f"\n  ================================================================")
+                        print(f"  Tunnel is already active!")
+                        print(f"  Open this URL:  {token.strip()}")
+                        if tok:
+                            print(f"  Access token:   {tok}")
+                        print(f"  ================================================================\n")
+                        return 0
+        except ProcessLookupError:
+            pass
+        except Exception:
+            pass
+
+    binary = Path(args.binary) if getattr(args, "binary", None) else Path("/usr/local/bin/cloudflared")
 
     if not binary.exists():
         log("downloading cloudflared…")
@@ -315,8 +344,6 @@ def cmd_tunnel(args: argparse.Namespace) -> int:
         if os.name != "nt":
             binary.chmod(0o755)
 
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    tunnel_log = LOG_DIR / "tunnel.log"
     handle = open(tunnel_log, "w", encoding="utf-8", buffering=1)
     proc = subprocess.Popen(
         [str(binary), "tunnel", "--url", f"http://127.0.0.1:{BACKEND_PORT}", "--no-autoupdate"],
@@ -332,11 +359,12 @@ def cmd_tunnel(args: argparse.Namespace) -> int:
     public = None
     started = time.time()
     while time.time() - started < 90:
-        text = tunnel_log.read_text(encoding="utf-8", errors="replace")
-        for token in text.replace("\r", " ").split():
-            if token.startswith("https://") and "trycloudflare.com" in token:
-                public = token.strip()
-                break
+        if tunnel_log.exists():
+            text = tunnel_log.read_text(encoding="utf-8", errors="replace")
+            for token in text.replace("\r", " ").split():
+                if token.startswith("https://") and "trycloudflare.com" in token:
+                    public = token.strip()
+                    break
         if public:
             break
         time.sleep(1)
@@ -347,10 +375,11 @@ def cmd_tunnel(args: argparse.Namespace) -> int:
 
     token = os.getenv("OG_TOKEN", "") or (load_pids().get("token") or "")
     step("READY")
-    print(f"\n  Open this URL:  {public}")
+    print(f"\n  ================================================================")
+    print(f"  Open this URL:  {public}")
     if token:
         print(f"  Access token:   {token}")
-    print("\n  Keep this cell's runtime alive. Ctrl+C / `stop` ends the session.\n")
+    print(f"  ================================================================\n")
     return 0
 
 
@@ -455,6 +484,7 @@ def main() -> int:
     p.add_argument("--data-dir", default=os.getenv("OG_DATA_DIR", ""))
     p.add_argument("--timeout", type=float, default=240)
     p.add_argument("--expose-comfy", action="store_true", help="also listen on 0.0.0.0:8188")
+    p.add_argument("--tunnel", action="store_true", help="open public tunnel immediately after starting")
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("tunnel", help="open a public URL")
