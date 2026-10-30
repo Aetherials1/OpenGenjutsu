@@ -65,8 +65,7 @@ CELLS.append(
   * `vace` — Wan 2.1 VACE 1.3B, ≈11 GB, works everywhere, 2–6 min per 4 s clip *(safe default)*
   * `animate-q4` — Wan 2.2 Animate 14B GGUF Q4, ≈14 GB, best identity/motion, 10–25 min *(best quality on a T4)*
   * `animate` — same 14B in fp8, needs >22 GB VRAM — for A100/L4, not a free T4
-* `USE_DRIVE` — cache weights in Google Drive so a runtime restart doesn't
-  re-download 10+ GB.
+* `USE_DRIVE` — cache weights in Google Drive (leave False if your Drive is full; weights download straight to Colab's ephemeral disk instead).
 * `OG_TOKEN` — leave empty and a random one is generated. **Keep it.** Anyone with
   the tunnel URL + token can spend your GPU quota.
 """
@@ -81,7 +80,7 @@ ZIP_PATH   = "/content/OpenGenjutsu.zip"           # used when REPO_URL is empty
 PROJECT_DIR = "/content/OpenGenjutsu"
 
 PRESET     = "vace"          # "vace" | "animate-q4" | "animate"
-USE_DRIVE  = True
+USE_DRIVE  = False           # False = use Colab's free ~100 GB disk (leaves your Google Drive untouched!)
 OG_TOKEN   = ""              # empty -> random token, printed below
 ENGINE     = "auto"          # "auto" | "wan21-vace" | "wan22-animate-gguf" | "wan22-animate" | "mock"
 """
