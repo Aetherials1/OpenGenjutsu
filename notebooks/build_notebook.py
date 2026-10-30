@@ -78,6 +78,8 @@ CELLS.append(
 CELLS.append(
     code(
         """
+import os
+
 REPO_URL   = "https://github.com/Aetherials1/OpenGenjutsu.git"  # or leave empty if using zip
 GH_TOKEN   = ""                                    # GitHub token if repo is private (or Colab Secrets)
 ZIP_PATH   = "/content/OpenGenjutsu.zip"           # drag & drop OpenGenjutsu.zip into Colab files
@@ -87,6 +89,8 @@ PRESET     = "animate2"      # "animate2" (New SOTA DiT) | "vace" (fastest, ligh
 USE_DRIVE  = False           # False = use Colab's free ~100 GB disk (leaves your Google Drive untouched!)
 OG_TOKEN   = ""              # empty -> random token, printed below
 ENGINE     = "auto"          # "auto" | "wan-animate-2" | "wan21-vace" | "wan22-animate-gguf" | "wan22-animate" | "mock"
+
+os.environ["OG_PRESET"] = PRESET
 """
     )
 )
@@ -305,7 +309,14 @@ fetched.
 CELLS.append(
     code(
         """
-!python scripts/colab_setup.py models --preset {PRESET} --models-root "$OG_MODELS_DIR"
+import os
+
+preset = globals().get("PRESET") or os.environ.get("OG_PRESET", "animate2")
+models_dir = globals().get("MODELS_DIR") or os.environ.get("OG_MODELS_DIR", "/content/OpenGenjutsu/models")
+
+cmd = f'python scripts/colab_setup.py models --preset {preset} --models-root "{models_dir}"'
+print("$", cmd)
+!{cmd}
 """
     )
 )

@@ -169,7 +169,8 @@ def link_into(source: Path, models_root: Path, dest: str) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch Wan models for OpenGenjutsu")
-    parser.add_argument("--preset", default="vace", choices=sorted(PRESETS))
+    parser.add_argument("--preset", default=os.getenv("OG_PRESET", "animate2"),
+                        help=f"weights preset (default: animate2, choices: {sorted(PRESETS)})")
     parser.add_argument("--models-root", default=os.getenv("OG_MODELS_DIR", ""),
                         help="cache directory (default: <project>/models)")
     parser.add_argument("--comfy-root", default=os.getenv("OG_COMFY_DIR", ""),
@@ -179,12 +180,19 @@ def main() -> int:
                         help="skip specs whose quant does not match")
     args = parser.parse_args()
 
+    preset = (args.preset or "").strip()
+    if not preset or preset in ("{PRESET}", "$PRESET", "${PRESET}", "$OG_PRESET", "${OG_PRESET}"):
+        preset = os.getenv("OG_PRESET", "animate2")
+    if preset not in PRESETS:
+        log(f"Unrecognized preset '{preset}', defaulting to 'animate2'. Available presets: {sorted(PRESETS)}")
+        preset = "animate2"
+
     cache_root = Path(args.models_root or PROJECT_ROOT / "models").expanduser()
     comfy_root = Path(args.comfy_root or PROJECT_ROOT.parent / "ComfyUI").expanduser()
     cache_root.mkdir(parents=True, exist_ok=True)
 
     specs: list[dict] = []
-    for key in PRESETS[args.preset]:
+    for key in PRESETS[preset]:
         specs.extend(SPECS[key])
 
     files_cache: dict[str, list[str]] = {}

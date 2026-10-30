@@ -184,11 +184,19 @@ def cmd_comfy(args: argparse.Namespace) -> int:
 
 def cmd_models(args: argparse.Namespace) -> int:
     step("model weights")
+    preset = (args.preset or "").strip()
+    if not preset or preset in ("{PRESET}", "$PRESET", "${PRESET}", "$OG_PRESET", "${OG_PRESET}"):
+        preset = os.getenv("OG_PRESET", "animate2")
+    valid_presets = ["vace", "animate", "animate-q4", "animate2", "all"]
+    if preset not in valid_presets:
+        log(f"Unrecognized preset '{preset}', defaulting to 'animate2'. Available: {valid_presets}")
+        preset = "animate2"
+
     cmd = [
         sys.executable,
         str(PROJECT_ROOT / "scripts" / "download_models.py"),
         "--preset",
-        args.preset,
+        preset,
         "--comfy-root",
         str(COMFY_DIR),
     ]
@@ -471,7 +479,7 @@ def main() -> int:
     p.set_defaults(func=cmd_comfy)
 
     p = sub.add_parser("models", help="download model weights")
-    p.add_argument("--preset", default="vace", choices=["vace", "animate", "animate-q4", "animate2", "all"])
+    p.add_argument("--preset", default=os.getenv("OG_PRESET", "animate2"), help="weights preset (default: animate2)")
     p.add_argument("--quant", default="", choices=["", "fp8", "q4"])
     p.add_argument("--models-root", default=os.getenv("OG_MODELS_DIR", ""))
     p.add_argument("--dry-run", action="store_true")
