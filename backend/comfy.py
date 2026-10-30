@@ -190,6 +190,8 @@ class ComfyClient:
         try:
             ws = websocket.create_connection(url, timeout=15)
         except Exception:
+            # WebSocket is optional; HTTP history polling remains reliable when
+            # the live progress socket cannot be established through a tunnel.
             return self._wait_polling(prompt_id, on_progress, should_cancel, deadline)
 
         try:
@@ -206,7 +208,21 @@ class ComfyClient:
                 except Exception as exc:
                     if type(exc).__name__ in {"WebSocketTimeoutException", "TimeoutError"}:
                         continue
-                    raise ComfyError(f"websocket closed: {exc}") from exc
+
+                    # ComfyUI's progress socket is only an optional live-view
+                    # channel.  Colab tunnels and long GPU jobs can drop it
+                    # while ComfyUI keeps the prompt running.  Do not fail the
+                    # generation just because that channel disappeared; switch
+                    # to the durable HTTP history endpoint and keep waiting.
+                    try:
+                        ws.close()
+                    except Exception:
+                        pass
+                    if on_progress:
+                        on_progress(0.06, "progress connection lost; monitoring job")
+                    return self._wait_polling(
+                        prompt_id, on_progress, should_cancel, deadline
+                    )
 
                 if not raw or isinstance(raw, bytes):
                     continue  # binary frames = preview images

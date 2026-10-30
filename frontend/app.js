@@ -170,6 +170,9 @@
 
   /* ------------------------------------------------------------------ connect */
 
+  let reconnectTimer = null;
+  let reconnectDelay = 1000;
+
   async function refreshHealth({ quiet = false } = {}) {
     try {
       const health = await api('/api/health');
@@ -193,17 +196,33 @@
       }
 
       renderHealth(health);
+      reconnectDelay = 1000;
       return health;
     } catch (error) {
       setPill('error', error.status === 401 ? 'Locked' : 'Offline');
-      if (!quiet) {
-        if (error.status === 401) {
-          toast('Access token rejected — open settings and paste the token from the notebook.', 'error', 9000);
-        } else {
-          toast(`Cannot reach backend at ${state.base || location.origin}`, 'error', 7000);
-        }
+      if (!quiet && error.status === 401) {
+        toast('Access token rejected — open settings and paste the token from the notebook.', 'error', 9000);
+      }
+      if (!reconnectTimer && error.status !== 401) {
+        const delay = reconnectDelay;
+        reconnectDelay = Math.min(15000, reconnectDelay * 2);
+        reconnectTimer = setTimeout(async () => {
+          reconnectTimer = null;
+          await refreshHealth({ quiet: true });
+          if (!state.health) scheduleReconnect();
+        }, delay);
       }
       return null;
+    }
+  }
+
+  function scheduleReconnect() {
+    if (!reconnectTimer) {
+      reconnectTimer = setTimeout(async () => {
+        reconnectTimer = null;
+        await refreshHealth({ quiet: true });
+        if (!state.health) scheduleReconnect();
+      }, reconnectDelay);
     }
   }
 
