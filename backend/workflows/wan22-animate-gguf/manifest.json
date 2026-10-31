@@ -36,6 +36,7 @@
     "CLIPVisionLoader",
     "CLIPVisionEncode",
     "UnetLoaderGGUF",
+    "LoraLoaderModelOnly",
     "CLIPTextEncode",
     "KSampler",
     "VAEDecode",
@@ -45,6 +46,8 @@
   ],
   "required_models": [
     "diffusion_models/Wan2.2-Animate-14B-Q4_K_M.gguf",
+    "loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+    "loras/wan2.2_animate_14B_relight_lora_bf16.safetensors",
     "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
     "vae/wan_2.1_vae.safetensors",
     "clip_vision/clip_vision_h.safetensors",

@@ -82,10 +82,11 @@ containing `manifest.json` + `template.json` and registers it by `id`.
   ComfyUI build"* instead of a stack trace)
 * `min_vram_mb` against the detected GPU
 
-`resolve_default()` sorts ready ComfyUI engines by `manifest.priority`
-(ascending) and picks the first. This is why a T4 lands on GGUF Animate when the
-GGUF node is installed, falls back to VACE otherwise, and never picks the 22 GB
-fp8 model on a 16 GB card.
+`resolve_default()` sorts only ready `sam2_mix` replacement workflows by
+`manifest.priority` (ascending) and picks the first. Pose-only Animate 2 and the
+mock composite are never selected automatically for a replacement request. If
+no Mix workflow is ready, the API refuses the request with an actionable install
+message instead of reporting a misleading source-like render as successful.
 
 ## Audio design
 

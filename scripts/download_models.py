@@ -60,7 +60,7 @@ SPECS: dict[str, list[dict]] = {
         {
             "repo": "Kijai/WanVideo_comfy_fp8_scaled",
             "patterns": [
-                "Wan22Animate/Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
+                "Wan22Animate/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors",
             ],
             "dest": "diffusion_models",
             "label": "Wan 2.2 Animate 14B (fp8)",
@@ -82,6 +82,20 @@ SPECS: dict[str, list[dict]] = {
             "dest": "loras",
             "label": "Animate lightning LoRA (4-8 steps)",
             "optional": True,
+        },
+        {
+            "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+            "patterns": ["split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"],
+            "dest": "loras",
+            "label": "LightX2V acceleration LoRA",
+            "required": True,
+        },
+        {
+            "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+            "patterns": ["split_files/loras/wan2.2_animate_14B_relight_lora_bf16.safetensors"],
+            "dest": "loras",
+            "label": "Wan Animate relight LoRA",
+            "required": True,
         },
     ],
     "animate-q4": [

@@ -400,30 +400,50 @@ class ComfyClient:
             pass
 
     # --------------------------------------------------------------- outputs
-    def fetch_output(self, entry: dict[str, Any], dest_dir: Path) -> Path:
-        """Download the primary output file described by a history entry.
+    def fetch_output(
+        self,
+        entry: dict[str, Any],
+        dest_dir: Path,
+        *,
+        preferred_node_id: str | None = None,
+    ) -> Path:
+        """Download the designated final video from a ComfyUI history entry.
 
-        The remote filename (and therefore its extension) is preserved inside
-        ``dest_dir`` so callers can tell an mp4 from an animated webp.
+        Prefer the workflow's SaveVideo node when supplied.  Videos always win
+        over preview images/audio so a source-like side output cannot silently
+        become the render.
         """
         outputs = entry.get("outputs") or {}
         dest_dir.mkdir(parents=True, exist_ok=True)
-        for node_output in outputs.values():
-            for key in ("videos", "gifs", "images", "audio"):
+        node_items: list[tuple[str, dict[str, Any]]] = []
+        for node_id, node_output in outputs.items():
+            if isinstance(node_output, dict):
+                node_items.append((str(node_id), node_output))
+        if preferred_node_id is not None:
+            node_items.sort(key=lambda pair: 0 if pair[0] == str(preferred_node_id) else 1)
+        else:
+            node_items.sort(key=lambda pair: 0 if pair[0] == "14" else 1)
+
+        # When a workflow declares its final node, never fall through to a
+        # different node: that could turn a preview/source passthrough into the
+        # reported render.
+        if preferred_node_id is not None:
+            node_items = [pair for pair in node_items if pair[0] == str(preferred_node_id)]
+        # Never return still images or audio when a video output exists.
+        for _, node_output in node_items:
+            for key in ("videos", "gifs"):
                 items = node_output.get(key) or []
                 for item in reversed(items):
                     if not isinstance(item, dict) or "filename" not in item:
                         continue
                     dest = dest_dir / _safe_name(Path(item["filename"]).name)
                     saved = self._download(
-                        item["filename"],
-                        item.get("subfolder", ""),
-                        item.get("type", "output"),
-                        dest,
+                        item["filename"], item.get("subfolder", ""),
+                        item.get("type", "output"), dest,
                     )
                     if saved:
                         return saved
-        raise ComfyError("ComfyUI finished but produced no output file")
+        raise ComfyError("ComfyUI finished but produced no video output file")
 
     def _download(
         self, filename: str, subfolder: str, kind: str, dest: Path

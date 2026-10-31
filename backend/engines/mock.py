@@ -24,6 +24,7 @@ class MockEngine(Engine):
         "audio toggle and downloads."
     )
     maturity = "test"
+    replacement_mode = "placeholder"
     notes = "Output is a placeholder composite, not a real motion transfer."
 
     def preflight(self) -> dict:

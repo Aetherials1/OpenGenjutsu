@@ -137,7 +137,9 @@ the tunnel — for anything long, trim it first.
 
 It is a placeholder: your character image with the motion clip inset in the
 corner, purely to prove upload → queue → progress → audio → download works.
-Use a real engine for actual transfer.
+Use a real engine for actual transfer. The UI and API now reject this engine
+for source-performer replacement jobs; it remains available only as a diagnostic
+option in the engine list.
 
 ## Job stuck at "queued"
 

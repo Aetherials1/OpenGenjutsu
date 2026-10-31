@@ -34,6 +34,7 @@
     "CLIPVisionLoader",
     "CLIPVisionEncode",
     "UNETLoader",
+    "LoraLoaderModelOnly",
     "CLIPTextEncode",
     "KSampler",
     "VAEDecode",
@@ -43,7 +44,9 @@
   ],
   "replacement_mode": "sam2_mix",
   "required_models": [
-    "diffusion_models/Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
+    "diffusion_models/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors",
+    "loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+    "loras/wan2.2_animate_14B_relight_lora_bf16.safetensors",
     "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
     "vae/wan_2.1_vae.safetensors",
     "clip_vision/clip_vision_h.safetensors",

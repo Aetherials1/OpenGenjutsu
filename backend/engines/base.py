@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..config import settings
-from ..media import MediaError, ensure_mp4, probe
+from ..media import MediaError, ensure_mp4, probe, video_frame_fingerprint
 
 ProgressFn = Callable[[float, str], None]
 CancelFn = Callable[[], bool]
@@ -130,6 +130,7 @@ class Engine(ABC):
             "notes": self.notes,
             "requires_comfy": self.requires_comfy,
             "requires_gpu": self.requires_gpu,
+            "replacement_mode": getattr(self, "replacement_mode", "placeholder"),
             "defaults": self.defaults(),
             "ready": state["ready"],
             "problems": state["problems"],
@@ -280,6 +281,7 @@ class TemplateEngine(Engine):
         self.description = self.manifest.get("description", "")
         self.maturity = self.manifest.get("maturity", "experimental")
         self.notes = self.manifest.get("notes", "")
+        self.replacement_mode = self.manifest.get("replacement_mode", "placeholder")
 
     # ---------------------------------------------------------------- config
     def defaults(self) -> dict[str, Any]:
@@ -439,6 +441,14 @@ class TemplateEngine(Engine):
     ) -> EngineResult:
         from ..comfy import ComfyClient, ComfyError, new_client_id
 
+        if self.replacement_mode != "sam2_mix":
+            raise EngineError(
+                f"{self.id} is not a source-performer replacement workflow "
+                f"(mode={self.replacement_mode})"
+            )
+        if not spec.character_path.exists() or not spec.motion_path.exists():
+            raise EngineError("replacement inputs are missing")
+
         client = ComfyClient()
         if not client.ping():
             raise EngineError(
@@ -464,6 +474,19 @@ class TemplateEngine(Engine):
         try:
             report(0.03, "building workflow")
             graph = inject(self.template, placeholder_values(spec))
+            if self.replacement_mode == "sam2_mix":
+                wan_nodes = [
+                    node for node in graph.values()
+                    if isinstance(node, dict) and node.get("class_type") == "WanAnimateToVideo"
+                ]
+                if len(wan_nodes) != 1:
+                    raise EngineError("replacement workflow must contain exactly one WanAnimateToVideo node")
+                wan_inputs = wan_nodes[0].get("inputs") or {}
+                for key in ("reference_image", "pose_video", "face_video", "background_video", "character_mask"):
+                    if key not in wan_inputs:
+                        raise EngineError(f"replacement workflow is missing Wan Animate input '{key}'")
+                if wan_inputs["background_video"] == wan_inputs["character_mask"]:
+                    raise EngineError("replacement workflow connected the same source to background and character mask")
             for n in graph.values():
                 if isinstance(n, dict) and n.get("class_type") == "LoadVideo":
                     inputs = n.get("inputs", {})
@@ -492,9 +515,21 @@ class TemplateEngine(Engine):
 
             report(0.97, "retrieving render")
             try:
-                raw = client.fetch_output(entry, workdir / "raw")
-            except ComfyError as exc:
-                raise EngineError(str(exc)) from exc
+                save_nodes = [
+                    node_id for node_id, node in graph.items()
+                    if isinstance(node, dict) and node.get("class_type") in {"SaveVideo", "SaveAnimatedWEBP"}
+                ]
+                if len(save_nodes) != 1:
+                    raise EngineError(
+                        f"workflow must have exactly one final video output node; found {len(save_nodes)}"
+                    )
+                raw = client.fetch_output(
+                    entry,
+                    workdir / "raw",
+                    preferred_node_id=save_nodes[0],
+                )
+            except (ComfyError, EngineError):
+                raise
         finally:
             # Inputs are consumed once the prompt has finished or failed.
             client.clear_staging()
@@ -509,6 +544,17 @@ class TemplateEngine(Engine):
             raise EngineError(f"could not convert render to mp4: {exc}") from exc
 
         info = probe(render)
+        if self.replacement_mode == "sam2_mix":
+            try:
+                source_fingerprint = video_frame_fingerprint(spec.motion_path)
+                output_fingerprint = video_frame_fingerprint(render)
+            except MediaError as exc:
+                raise EngineError(f"could not validate replacement output: {exc}") from exc
+            if source_fingerprint == output_fingerprint:
+                raise EngineError(
+                    "replacement output is an exact decoded-frame copy of the driving video; "
+                    "the source performer was not replaced"
+                )
         report(0.99, "finalising")
         return EngineResult(
             path=render,
@@ -520,6 +566,14 @@ class TemplateEngine(Engine):
                 "duration": round(float(info["duration"]), 3),
                 "frames": info["nb_frames"],
                 "engine": self.id,
+                "replacement_mode": self.replacement_mode,
+                "replacement_inputs": {
+                    "reference_image": True,
+                    "pose_video": True,
+                    "face_video": True,
+                    "background_video": True,
+                    "character_mask": True,
+                },
             },
         )
 

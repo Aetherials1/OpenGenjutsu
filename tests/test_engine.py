@@ -28,7 +28,7 @@ from backend.engines.base import (  # noqa: E402
     inject,
     placeholder_values,
 )
-from backend.media import probe  # noqa: E402
+from backend.media import probe, video_frame_fingerprint  # noqa: E402
 from scripts.download_models import SPECS  # noqa: E402
 
 FAILED: list[str] = []
@@ -111,6 +111,7 @@ for directory in templates:
         expected = Path(manifest["required_models"][0]).name
         downloaded = [pattern.rsplit("/", 1)[-1] for spec in fp8_specs for pattern in spec["patterns"]]
         check(expected in downloaded, "wan22-animate: downloader model matches manifest", f"{expected} not in {downloaded}")
+        check(expected == "Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors", "wan22-animate: matches reference Space checkpoint")
 
     # every placeholder resolves
     unknown: set[str] = set()
@@ -132,6 +133,10 @@ for directory in templates:
     graph = inject(engine.template, values)
     check(all(isinstance(node, dict) and "class_type" in node for node in graph.values()),
           f"{directory.name}: all nodes have class_type")
+    if directory.name in {"wan22-animate-gguf", "wan22-animate"}:
+        check(engine.replacement_mode == "sam2_mix", f"{directory.name}: marked as replacement workflow")
+        output_nodes = [node_id for node_id, node in graph.items() if node.get("class_type") in {"SaveVideo", "SaveAnimatedWEBP"}]
+        check(len(output_nodes) == 1, f"{directory.name}: exactly one final video output node")
     seed_ints = [
         node["inputs"]["seed"]
         for node in graph.values()
@@ -170,11 +175,19 @@ for directory in templates:
         check(graph[wan_node]["inputs"]["character_mask"] == ["26", 0], f"{directory.name}: tracked character mask")
         check(graph["24"]["inputs"]["bboxes"] == ["21", 3], f"{directory.name}: SAM2 follows detected subject boxes")
         check(graph["22"]["inputs"].get("retarget_padding") == 16, f"{directory.name}: pose retarget padding is explicit")
+        check(graph["1b"]["class_type"] == "ImageScale", f"{directory.name}: reference is resized to target frame")
+        check(graph["21"]["inputs"].get("retarget_image") == ["1b", 0], f"{directory.name}: detector uses resized reference")
+        check(graph["5b"]["inputs"].get("image") == ["1b", 0] and graph["5b"]["inputs"].get("crop") == "none", f"{directory.name}: full reference reaches CLIP vision")
+        check(graph["9"]["inputs"].get("reference_image") == ["1b", 0], f"{directory.name}: resized reference reaches Wan Animate")
+        check(graph["9"]["inputs"].get("continue_motion_max_frames") == 5, f"{directory.name}: uses official continuation window")
         sam_model = graph["23"]["inputs"].get("model")
         check(sam_model == "sam2.1_hiera_base_plus.safetensors", f"{directory.name}: SAM2.1 model enables video boxes")
         check("2.1" in sam_model and graph["23"]["inputs"].get("segmentor") == "video" and "bboxes" in graph["24"]["inputs"],
               f"{directory.name}: SAM2 video+bbox combination is compatible")
         check("2.0" not in sam_model, f"{directory.name}: rejects SAM2.0 video+bbox combination")
+        check(graph["6b"]["class_type"] == "LoraLoaderModelOnly", f"{directory.name}: LightX2V LoRA is wired")
+        check(graph["6c"]["class_type"] == "LoraLoaderModelOnly", f"{directory.name}: relight LoRA is wired")
+        check(graph["10"]["inputs"]["model"] == ["6c", 0], f"{directory.name}: sampler uses LoRA stack")
     if directory.name in {"wan22-animate-gguf", "wan22-animate"}:
         sam_spec = SPECS["animate-preprocess"][-1]
         check(sam_spec["rename"] == "sam2.1_hiera_base_plus-fp16.safetensors",
@@ -238,9 +251,13 @@ check("mock" in engines, "mock engine registered")
 ids = {e.id for e in engines.values()}
 check(ids >= {"mock", "wan21-vace"}, f"engines discovered: {sorted(ids)}")
 check(all(hasattr(e, "preflight") for e in engines.values()), "all engines expose preflight")
+check(engines["wan22-animate"].replacement_mode == "sam2_mix", "Mix engine is replacement-marked")
+check(engines["wan-animate-2"].replacement_mode == "pose_only", "Animate 2 is explicitly pose-only")
+check(engines["mock"].replacement_mode == "placeholder", "mock is explicitly placeholder-only")
 mock = engines["mock"]
 check(mock.defaults()["steps"] == 1, "mock defaults are cheap")
 check(probe.__module__ == "backend.media", "media probe importable without a GPU")
+check(video_frame_fingerprint.__module__ == "backend.media", "video fingerprint helper importable")
 
 # --------------------------------------------------------------------------- #
 print(f"\n{PASSED} passed, {len(FAILED)} failed")

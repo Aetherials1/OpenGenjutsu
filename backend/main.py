@@ -341,10 +341,32 @@ async def create_job(
     audio_volume: Annotated[float, Form()] = 1.0,
 ) -> dict[str, Any]:
     engine_id = engine or resolve_default()
+    if not engine_id:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "no replacement engine is ready",
+                "problems": [
+                    "Start ComfyUI and install/select Wan 2.2 Animate Mix "
+                    "(wan22-animate or wan22-animate-gguf)."
+                ],
+            },
+        )
     try:
         impl = get_engine(engine_id)
     except EngineError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if getattr(impl, "replacement_mode", "placeholder") != "sam2_mix":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "selected engine does not perform source-performer replacement",
+                "problems": [
+                    "Choose Wan 2.2 Animate Mix (wan22-animate or wan22-animate-gguf)."
+                ],
+            },
+        )
 
     state = impl.preflight()
     if not state["ready"]:

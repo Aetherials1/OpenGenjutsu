@@ -6,6 +6,7 @@ one place (see ``mux_audio``).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -293,6 +294,30 @@ def has_audio(path: str | Path) -> bool:
         return bool(probe(path)["has_audio"])
     except MediaError:
         return False
+
+
+def video_frame_fingerprint(path: str | Path) -> str:
+    """Return a container-independent digest of decoded video frames.
+
+    This catches an accidental source passthrough even when the output was
+    remuxed or re-encoded and therefore has different file bytes.
+    """
+    raw = run(
+        [
+            ffmpeg_exe(),
+            "-v", "error",
+            "-i", str(path),
+            "-map", "0:v:0",
+            "-an",
+            "-f", "framemd5",
+            "-",
+        ],
+        timeout=300,
+    )
+    frames = "\n".join(line for line in raw.splitlines() if line and not line.startswith("#"))
+    if not frames:
+        raise MediaError(f"video has no decodable frames: {Path(path).name}")
+    return hashlib.sha256(frames.encode("ascii", "replace")).hexdigest()
 
 
 # --------------------------------------------------------------------------- #

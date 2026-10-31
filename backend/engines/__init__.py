@@ -94,11 +94,17 @@ def get_engine(engine_id: str | None) -> Engine:
         return engines[engine_id]
     if engine_id and engine_id not in engines:
         raise EngineError(f"unknown engine '{engine_id}'")
-    return engines[resolve_default()]
+    default = resolve_default()
+    if not default:
+        raise EngineError(
+            "no Wan Animate replacement engine is ready; start ComfyUI and install "
+            "the Wan 2.2 Animate Mix workflow/models"
+        )
+    return engines[default]
 
 
 def resolve_default() -> str:
-    """Pick the best available engine: explicit setting -> best ready workflow -> mock."""
+    """Pick a ready replacement workflow; never silently choose pose-only/mock."""
     configured = settings.engine
     engines = discover()
     if configured and configured != "auto":
@@ -106,8 +112,13 @@ def resolve_default() -> str:
             return configured
         log.warning("configured engine '%s' not found, falling back", configured)
 
+    # A pose-only Animate 2 graph does not remove the source performer.  It is
+    # useful as an explicit fallback, but must not win automatic replacement.
     ordered = sorted(
-        (e for e in engines.values() if e.requires_comfy),
+        (
+            e for e in engines.values()
+            if e.requires_comfy and getattr(e, "replacement_mode", "placeholder") == "sam2_mix"
+        ),
         key=lambda e: _manifest_priority(Path(e.dir)) if hasattr(e, "dir") else 100,
     )
     for engine in ordered:
@@ -116,7 +127,11 @@ def resolve_default() -> str:
                 return engine.id
         except Exception:
             continue
-    return "mock"
+
+    # Do not report a placeholder composite as a successful replacement.  The
+    # caller can still explicitly select mock or pose-only for diagnostics, but
+    # normal auto mode must make the missing replacement setup visible.
+    return ""
 
 
 def describe_all() -> list[dict]:

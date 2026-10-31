@@ -363,7 +363,12 @@
     }
 
     const previousEngine = previous && engineById(previous);
-    const wanted = previousEngine?.ready ? previous : (state.defaultEngine || ordered.find((e) => e.ready)?.id || 'mock');
+    const automaticReplacement = ordered.find((e) => e.ready && e.replacement_mode === 'sam2_mix');
+    const defaultEngine = engineById(state.defaultEngine);
+    const wanted = previousEngine?.ready && previousEngine.replacement_mode === 'sam2_mix'
+      ? previous
+      : (automaticReplacement?.id
+        || (defaultEngine?.ready && defaultEngine.replacement_mode === 'sam2_mix' ? defaultEngine.id : ''));
     state.engine = wanted;
     el.engine.value = wanted;
     applyEngine(wanted, { silent: true });
@@ -389,6 +394,9 @@
 
     const problems = engine.problems || [];
     const notes = [];
+    if (engine.replacement_mode !== 'sam2_mix') {
+      notes.push('This engine is not source-performer replacement; select Wan 2.2 Animate Mix.');
+    }
     if (engine.description) notes.push(engine.description);
     if (problems.length) notes.push(problems.join(' '));
     else if ((engine.warnings || []).length) notes.push(engine.warnings[0]);
@@ -598,12 +606,14 @@
 
   function updateGenerateState() {
     const engine = engineById(state.engine);
-    const ready = Boolean(engine?.ready);
+    const ready = Boolean(engine?.ready && engine.replacement_mode === 'sam2_mix');
     const haveFiles = Boolean(state.files.motion && state.files.character);
     const idle = !state.submitting && !isBusy();
     el.btnGenerate.disabled = !ready || !haveFiles || !idle;
     el.btnGenerate.title = !ready
-      ? 'This engine is not ready — see the note under Engine.'
+      ? (engine?.replacement_mode !== 'sam2_mix'
+        ? 'Select Wan 2.2 Animate Mix for source-performer replacement.'
+        : 'This engine is not ready — see the note under Engine.')
       : !haveFiles
       ? 'Add a motion clip and a character image first.'
       : 'Render (Ctrl + Enter)';

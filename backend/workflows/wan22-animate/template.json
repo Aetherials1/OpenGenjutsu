@@ -13,6 +13,17 @@
     },
     "_meta": { "title": "Motion source" }
   },
+  "1b": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": ["1", 0],
+      "upscale_method": "lanczos",
+      "width": "@width",
+      "height": "@height",
+      "crop": "center"
+    },
+    "_meta": { "title": "Resize reference to target frame" }
+  },
   "2b": {
     "class_type": "GetVideoComponents",
     "inputs": {
@@ -36,8 +47,8 @@
       "images": ["2b", 0],
       "width": "@width",
       "height": "@height",
-      "retarget_image": ["1", 0],
-      "face_padding": 16
+      "retarget_image": ["1b", 0],
+      "face_padding": 0
     },
     "_meta": { "title": "Extract face crops, pose and subject boxes" }
   },
@@ -133,15 +144,15 @@
     "class_type": "CLIPVisionEncode",
     "inputs": {
       "clip_vision": ["5", 0],
-      "image": ["1", 0],
-      "crop": "center"
+      "image": ["1b", 0],
+      "crop": "none"
     },
     "_meta": { "title": "Encode reference image" }
   },
   "6": {
     "class_type": "UNETLoader",
     "inputs": {
-      "unet_name": "Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
+      "unet_name": "Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors",
       "weight_dtype": "default"
     },
     "_meta": { "title": "Wan 2.2 Animate 14B" }
@@ -173,20 +184,38 @@
       "length": "@frames",
       "batch_size": 1,
       "clip_vision_output": ["5b", 0],
-      "reference_image": ["1", 0],
+      "reference_image": ["1b", 0],
       "pose_video": ["22", 0],
       "face_video": ["21", 1],
       "background_video": ["27", 0],
       "character_mask": ["26", 0],
-      "continue_motion_max_frames": 1,
+      "continue_motion_max_frames": 5,
       "video_frame_offset": 0
     },
     "_meta": { "title": "Wan Animate conditioning" }
   },
+  "6b": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": ["6", 0],
+      "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+      "strength_model": 1.0
+    },
+    "_meta": { "title": "LightX2V acceleration LoRA" }
+  },
+  "6c": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": ["6b", 0],
+      "lora_name": "wan2.2_animate_14B_relight_lora_bf16.safetensors",
+      "strength_model": 1.0
+    },
+    "_meta": { "title": "Wan Animate relight LoRA" }
+  },
   "10": {
     "class_type": "ModelSamplingSD3",
     "inputs": {
-      "model": ["6", 0],
+      "model": ["6c", 0],
       "shift": "@shift"
     },
     "_meta": { "title": "Sampling shift" }
