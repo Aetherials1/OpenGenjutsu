@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -494,8 +495,12 @@ class TemplateEngine(Engine):
                         inputs.pop(dep, None)
 
             client_id = new_client_id()
+            output_started = time.time()
             try:
                 prompt_id = client.submit(graph, client_id)
+                # SaveVideo names files with a counter, so the prefix plus this
+                # timestamp scopes fallback retrieval to this prompt only.
+                output_started = time.time()
             except ComfyError as exc:
                 raise EngineError(str(exc)) from exc
 
@@ -527,6 +532,8 @@ class TemplateEngine(Engine):
                     entry,
                     workdir / "raw",
                     preferred_node_id=save_nodes[0],
+                    output_prefix=f"og_{spec.job_id}",
+                    not_before=output_started,
                 )
             except (ComfyError, EngineError):
                 raise

@@ -265,8 +265,8 @@
     "inputs": {
       "video": ["13", 0],
       "filename_prefix": "@prefix",
-      "format": "mp4",
-      "codec": "h264"
+      "format": "auto",
+      "codec": "auto"
     },
     "_meta": { "title": "Save" }
   }

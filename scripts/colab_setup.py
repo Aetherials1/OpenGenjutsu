@@ -315,6 +315,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         {
             "OG_COMFY_URL": COMFY_URL,
             "OG_COMFY_INPUT_DIR": str(COMFY_DIR / "input"),
+            "OG_COMFY_OUTPUT_DIR": str(COMFY_DIR / "output"),
             "OG_DATA_DIR": args.data_dir or str(PROJECT_ROOT / "data"),
             "OG_TOKEN": args.token or os.getenv("OG_TOKEN", ""),
             "OG_ENGINE": args.engine,

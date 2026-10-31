@@ -406,6 +406,8 @@ class ComfyClient:
         dest_dir: Path,
         *,
         preferred_node_id: str | None = None,
+        output_prefix: str | None = None,
+        not_before: float | None = None,
     ) -> Path:
         """Download the designated final video from a ComfyUI history entry.
 
@@ -415,6 +417,10 @@ class ComfyClient:
         under ``ui``.  Accept those compatible shapes, but only download a
         file whose extension is a real video extension.  This prevents a still
         preview or source image from being reported as a successful render.
+
+        If a recent ComfyUI build writes the video but drops its SavedResult
+        metadata, ``output_prefix`` enables a narrowly scoped local output-dir
+        fallback.  The fallback is only used after history retrieval fails.
         """
         outputs = entry.get("outputs") or {}
         dest_dir.mkdir(parents=True, exist_ok=True)
@@ -434,7 +440,7 @@ class ComfyClient:
         if preferred_node_id is not None:
             node_items = [pair for pair in node_items if pair[0] == str(preferred_node_id)]
 
-        video_extensions = {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v"}
+        video_extensions = {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v", ".gif"}
         candidates: list[dict[str, Any]] = []
 
         def collect(value: Any, *, allow_images: bool = False) -> None:
@@ -442,7 +448,9 @@ class ComfyClient:
                 if isinstance(value.get("filename"), str):
                     filename = value["filename"]
                     suffix = Path(filename).suffix.lower()
-                    if allow_images and suffix not in video_extensions:
+                    # Explicit video/UI containers must still be checked: a
+                    # buggy preview entry can appear under ``videos`` too.
+                    if suffix not in video_extensions:
                         return
                     candidates.append(value)
                     return
@@ -457,7 +465,7 @@ class ComfyClient:
         # history formats without allowing PNG/JPEG previews through.
         for _, node_output in node_items:
             for key in ("videos", "gifs", "video", "files"):
-                collect(node_output.get(key), allow_images=False)
+                collect(node_output.get(key))
             collect(node_output.get("images"), allow_images=True)
             # Native SaveVideo returns its preview metadata nested under the
             # node's ``ui`` object in some ComfyUI history versions.
@@ -478,6 +486,35 @@ class ComfyClient:
             )
             if saved:
                 return saved
+
+        # Some ComfyUI V3/video builds save the file successfully but omit the
+        # PreviewVideo SavedResult from the HTTP history response.  When the
+        # caller supplies the unique OpenGenjutsu prefix, recover only a newly
+        # written video with that prefix from ComfyUI's configured output dir.
+        # Never scan arbitrary files or accept an unrelated/stale render.
+        if output_prefix and settings.comfy_output_dir:
+            prefix = _safe_name(output_prefix)
+            output_dir = settings.comfy_output_dir
+            try:
+                local_candidates = [
+                    path for path in output_dir.rglob("*")
+                    if path.is_file()
+                    and path.name.startswith(prefix)
+                    and path.suffix.lower() in video_extensions
+                    and (not_before is None or path.stat().st_mtime >= not_before - 2.0)
+                    and path.stat().st_size > 0
+                ]
+                local_candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+                for source in local_candidates:
+                    dest = dest_dir / _safe_name(source.name)
+                    try:
+                        shutil.copy2(source, dest)
+                    except OSError:
+                        continue
+                    if dest.exists() and dest.stat().st_size:
+                        return dest
+            except OSError:
+                pass
 
         keys = sorted({key for _, output in node_items for key in output.keys()})
         raise ComfyError(

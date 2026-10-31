@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +32,7 @@ from backend.engines.base import (  # noqa: E402
 )
 from backend.media import probe, video_frame_fingerprint  # noqa: E402
 from backend.comfy import ComfyClient  # noqa: E402
+from backend.config import settings  # noqa: E402
 from scripts.download_models import SPECS  # noqa: E402
 
 FAILED: list[str] = []
@@ -288,6 +290,23 @@ with tempfile.TemporaryDirectory() as tmp:
     nested = {"outputs": {"14": {"ui": {"videos": [{"filename": "render.mp4", "subfolder": "", "type": "output"}]}}}}
     found = client.fetch_output(nested, destination / "nested", preferred_node_id="14")
     check(found.suffix == ".mp4", "accepts nested SaveVideo UI output")
+
+    output_dir = destination / "comfy-output"
+    output_dir.mkdir()
+    fallback_source = output_dir / "og_job123_00001_.mp4"
+    fallback_source.write_bytes(b"filesystem video")
+    previous_output_dir = settings.comfy_output_dir
+    settings.comfy_output_dir = output_dir
+    client._download = lambda *args: None  # type: ignore[method-assign]
+    fallback = client.fetch_output(
+        {"outputs": {}},
+        destination / "fallback",
+        preferred_node_id="14",
+        output_prefix="og_job123",
+        not_before=time.time() - 1,
+    )
+    check(fallback.read_bytes() == b"filesystem video", "recovers scoped local video output")
+    settings.comfy_output_dir = previous_output_dir
 
     still = {"outputs": {"14": {"images": [{"filename": "preview.png", "subfolder": "", "type": "output"}]}}}
     try:

@@ -69,6 +69,8 @@ class Settings:
         self.comfy_url = os.getenv("OG_COMFY_URL", "http://127.0.0.1:8188").rstrip("/")
         raw_input = os.getenv("OG_COMFY_INPUT_DIR", "").strip()
         self.comfy_input_dir = Path(raw_input) if raw_input else None
+        raw_output = os.getenv("OG_COMFY_OUTPUT_DIR", "").strip()
+        self.comfy_output_dir = Path(raw_output) if raw_output else None
 
         self.engine = os.getenv("OG_ENGINE", "auto").strip() or "auto"
 
