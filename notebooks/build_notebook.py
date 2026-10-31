@@ -62,8 +62,9 @@ A Hugging Face **read** token is sufficient. Never paste a write/admin token int
         """
 import os
 
-# Source acquisition. If git cannot access the repository, the launcher asks you to upload the zip.
-REPO_URL = "https://github.com/Aetherials1/OpenGenjutsu.git"
+# Source acquisition. ZIP-first mode avoids GitHub network access entirely.
+# Upload OpenGenjutsu.zip to Colab Files before running the launcher.
+REPO_URL = ""  # Deliberately disabled: no GitHub clone/fetch is performed.
 ZIP_PATH = "/content/OpenGenjutsu.zip"
 PROJECT_DIR = "/content/OpenGenjutsu"
 
@@ -110,7 +111,7 @@ print(f"GitHub token: {'configured' if GH_TOKEN else 'not configured'}")
 print(f"Google Drive: {'enabled' if USE_DRIVE else 'disabled'}")
 """
     ),
-    md("## ONE-CLICK START\n\nRun this cell once after a fresh runtime. It installs everything, downloads the selected weights, starts the services, and prints an authenticated URL."),
+    md("## ONE-CLICK START\n\nUpload `OpenGenjutsu.zip` to the Colab Files panel first, then run this cell once after a fresh runtime. ZIP-first mode is enabled and does not contact GitHub. It installs everything, downloads the selected weights, starts the services, and prints an authenticated URL."),
     code(
         """
 import base64
