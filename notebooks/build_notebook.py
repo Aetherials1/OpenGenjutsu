@@ -121,6 +121,7 @@ import shutil
 import subprocess
 import sys
 import time
+import zipfile
 
 root = pathlib.Path(PROJECT_DIR)
 zip_path = pathlib.Path(ZIP_PATH)
@@ -140,12 +141,15 @@ def unpack_project(src: pathlib.Path):
     tmp = pathlib.Path("/content/_ogenjutsu_unzip")
     shutil.rmtree(tmp, ignore_errors=True)
     try:
-        shutil.unpack_archive(str(src), str(tmp))
+        # zipfile is used explicitly because Colab's archive extraction can
+        # omit or mishandle directory entries on some runtimes.
+        with zipfile.ZipFile(src) as archive:
+            archive.extractall(tmp)
     except Exception as exc:
         raise RuntimeError(f"Could not unpack {src}: {exc}. Re-upload the current OpenGenjutsu.zip.") from exc
 
     # Accept both layouts: backend/main.py and OpenGenjutsu/backend/main.py.
-    # Some Colab uploads omit directory entries, so locate the file itself.
+    # Locate the file itself; ZIP directory entries are not required.
     main_files = [p for p in tmp.rglob("main.py") if p.parent.name.lower() == "backend"]
     if not main_files:
         sample = [str(p.relative_to(tmp)) for p in list(tmp.rglob("*"))[:20]]
