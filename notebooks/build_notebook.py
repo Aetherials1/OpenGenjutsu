@@ -147,7 +147,7 @@ def unpack_project(src: pathlib.Path):
             # Windows-created ZIPs may store backslashes as literal member
             # characters. Normalize them for Linux/Colab before writing.
             for member in archive.infolist():
-                name = member.filename.replace(chr(92), "/").lstrip("/")
+                name = "/".join(member.filename.split(chr(92))).lstrip(chr(47))
                 if not name or name.endswith("/"):
                     continue
                 destination = tmp / pathlib.PurePosixPath(name)
