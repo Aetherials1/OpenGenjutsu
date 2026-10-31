@@ -257,8 +257,14 @@ def comfy_flags(profile: str) -> list[str]:
     log(f"ComfyUI profile selected: '{profile}'")
 
     if profile == "big":
-        log("Pro/High-VRAM GPU detected (>=18 GB, e.g. A100 / L4) -> High performance mode enabled (no --lowvram offloading).")
-        return ["--preview-method", "none", "--highvram"]
+        # Do not use --highvram for Wan Animate on a 40 GB A100. The FP8
+        # checkpoint plus Animate preprocessing can leave too little room for
+        # the sampler's video latent, causing an OOM even for a short clip.
+        # Keep ComfyUI's dynamic VRAM offloading enabled and reserve 2 GB for
+        # transient allocations instead. This still uses the A100 profile but
+        # lets inactive weights move to host RAM when sampling starts.
+        log("Pro/High-VRAM GPU detected (>=18 GB, e.g. A100 / L4) -> Dynamic VRAM mode with 2 GB headroom enabled.")
+        return ["--preview-method", "none", "--reserve-vram", "2", "--fp16-intermediates"]
 
     log("Free-tier / Low-VRAM GPU detected (<=16 GB, e.g. T4) -> Memory-safe low-VRAM mode enabled.")
     return ["--lowvram", "--preview-method", "none", "--use-split-cross-attention"]

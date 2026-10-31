@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 """Generate the streamlined OpenGenjutsu Colab notebook."""
 
 from __future__ import annotations
@@ -26,19 +26,20 @@ def code(source: str) -> dict:
 CELLS: list[dict] = [
     md(
         """
-# OpenGenjutsu — one-click Colab launcher
+# OpenGenjutsu â€” one-click Colab launcher
 
 Upload a **motion video** and a **character image** and generate a character motion-transfer video.
 This notebook runs ComfyUI, OpenGenjutsu, and a Cloudflare tunnel entirely inside the Colab runtime.
 
 ## Quick start
 
-1. Select **Runtime → Change runtime type → A100 GPU** (40 GB recommended).
+1. Select **Runtime â†’ Change runtime type â†’ A100 GPU** (40 GB recommended).
 2. Add your Hugging Face token in Colab **Secrets** as `HF_TOKEN`.
 3. Run the **Settings** cell, then the **ONE-CLICK START** cell.
 4. Wait for the readiness check, open the printed link, and upload your media.
 
 The default `animate` preset uses the full **Wan 2.2 Animate 14B FP8 Mix replacement** workflow.
+The A100 launcher keeps ComfyUI dynamic VRAM offloading enabled so short video latents fit safely.
 It is intended for an A100-class GPU and follows the reference character-replacement pipeline:
 pose/face guidance, SAM2.1 performer segmentation, background preservation, and reference-character
 conditioning. Nothing is written to Google Drive unless you explicitly set `USE_DRIVE = True`.
@@ -51,8 +52,8 @@ conditioning. Nothing is written to Google Drive unless you explicitly set `USE_
 Tokens are read from Colab Secrets first, then from the values below. Add these secrets using the
 key icon in the left sidebar:
 
-- `HF_TOKEN` — recommended; prevents Hugging Face rate-limit errors while listing/downloading weights.
-- `GH_TOKEN` — only needed if `REPO_URL` points to a private GitHub repository.
+- `HF_TOKEN` â€” recommended; prevents Hugging Face rate-limit errors while listing/downloading weights.
+- `GH_TOKEN` â€” only needed if `REPO_URL` points to a private GitHub repository.
 
 A Hugging Face **read** token is sufficient. Never paste a write/admin token into a shared notebook.
 """
