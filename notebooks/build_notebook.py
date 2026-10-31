@@ -139,11 +139,21 @@ def unpack_project(src: pathlib.Path):
     print(f"Unpacking {src}...")
     tmp = pathlib.Path("/content/_ogenjutsu_unzip")
     shutil.rmtree(tmp, ignore_errors=True)
-    shutil.unpack_archive(str(src), str(tmp))
-    matches = [p for p in tmp.rglob("backend") if (p / "main.py").is_file()]
-    if not matches:
-        raise RuntimeError("The uploaded archive does not contain backend/main.py")
-    source = matches[0].parent
+    try:
+        shutil.unpack_archive(str(src), str(tmp))
+    except Exception as exc:
+        raise RuntimeError(f"Could not unpack {src}: {exc}. Re-upload the current OpenGenjutsu.zip.") from exc
+
+    # Accept both layouts: backend/main.py and OpenGenjutsu/backend/main.py.
+    # Some Colab uploads omit directory entries, so locate the file itself.
+    main_files = [p for p in tmp.rglob("main.py") if p.parent.name.lower() == "backend"]
+    if not main_files:
+        sample = [str(p.relative_to(tmp)) for p in list(tmp.rglob("*"))[:20]]
+        raise RuntimeError(
+            "The uploaded archive does not contain backend/main.py. "
+            f"Archive sample: {sample}. Re-upload the current OpenGenjutsu.zip."
+        )
+    source = main_files[0].parent.parent
     root.mkdir(parents=True, exist_ok=True)
     shutil.copytree(str(source), str(root), dirs_exist_ok=True)
     shutil.rmtree(tmp, ignore_errors=True)
