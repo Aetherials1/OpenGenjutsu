@@ -409,16 +409,20 @@ class ComfyClient:
     ) -> Path:
         """Download the designated final video from a ComfyUI history entry.
 
-        Prefer the workflow's SaveVideo node when supplied.  Videos always win
-        over preview images/audio so a source-like side output cannot silently
-        become the render.
+        ComfyUI has used several history shapes for ``SaveVideo`` over time:
+        ``videos`` is current, older builds used ``gifs`` or even ``images``
+        for video filenames, and some builds retain the saved-result metadata
+        under ``ui``.  Accept those compatible shapes, but only download a
+        file whose extension is a real video extension.  This prevents a still
+        preview or source image from being reported as a successful render.
         """
         outputs = entry.get("outputs") or {}
         dest_dir.mkdir(parents=True, exist_ok=True)
         node_items: list[tuple[str, dict[str, Any]]] = []
-        for node_id, node_output in outputs.items():
-            if isinstance(node_output, dict):
-                node_items.append((str(node_id), node_output))
+        if isinstance(outputs, dict):
+            for node_id, node_output in outputs.items():
+                if isinstance(node_output, dict):
+                    node_items.append((str(node_id), node_output))
         if preferred_node_id is not None:
             node_items.sort(key=lambda pair: 0 if pair[0] == str(preferred_node_id) else 1)
         else:
@@ -429,21 +433,57 @@ class ComfyClient:
         # reported render.
         if preferred_node_id is not None:
             node_items = [pair for pair in node_items if pair[0] == str(preferred_node_id)]
-        # Never return still images or audio when a video output exists.
+
+        video_extensions = {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v"}
+        candidates: list[dict[str, Any]] = []
+
+        def collect(value: Any, *, allow_images: bool = False) -> None:
+            if isinstance(value, dict):
+                if isinstance(value.get("filename"), str):
+                    filename = value["filename"]
+                    suffix = Path(filename).suffix.lower()
+                    if allow_images and suffix not in video_extensions:
+                        return
+                    candidates.append(value)
+                    return
+                for child in value.values():
+                    collect(child, allow_images=allow_images)
+            elif isinstance(value, list):
+                for child in value:
+                    collect(child, allow_images=allow_images)
+
+        # Prefer explicit video results.  ``images`` is accepted only when its
+        # filename is an actual video; this handles older ComfyUI/fake-client
+        # history formats without allowing PNG/JPEG previews through.
         for _, node_output in node_items:
-            for key in ("videos", "gifs"):
-                items = node_output.get(key) or []
-                for item in reversed(items):
-                    if not isinstance(item, dict) or "filename" not in item:
-                        continue
-                    dest = dest_dir / _safe_name(Path(item["filename"]).name)
-                    saved = self._download(
-                        item["filename"], item.get("subfolder", ""),
-                        item.get("type", "output"), dest,
-                    )
-                    if saved:
-                        return saved
-        raise ComfyError("ComfyUI finished but produced no video output file")
+            for key in ("videos", "gifs", "video", "files"):
+                collect(node_output.get(key), allow_images=False)
+            collect(node_output.get("images"), allow_images=True)
+            # Native SaveVideo returns its preview metadata nested under the
+            # node's ``ui`` object in some ComfyUI history versions.
+            collect(node_output.get("ui"), allow_images=True)
+
+        # A few ComfyUI versions expose only the UI saved-result metadata in
+        # history.  Restrict this fallback to the preferred node when possible.
+        if not candidates:
+            ui = entry.get("ui") or {}
+            collect(ui, allow_images=True)
+
+        for item in reversed(candidates):
+            filename = item["filename"]
+            dest = dest_dir / _safe_name(Path(filename).name)
+            saved = self._download(
+                filename, item.get("subfolder", ""),
+                item.get("type", "output"), dest,
+            )
+            if saved:
+                return saved
+
+        keys = sorted({key for _, output in node_items for key in output.keys()})
+        raise ComfyError(
+            "ComfyUI finished but produced no video output file "
+            f"(preferred node {preferred_node_id or 'auto'}; output keys: {keys or 'none'})"
+        )
 
     def _download(
         self, filename: str, subfolder: str, kind: str, dest: Path

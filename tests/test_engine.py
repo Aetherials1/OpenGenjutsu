@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,6 +30,7 @@ from backend.engines.base import (  # noqa: E402
     placeholder_values,
 )
 from backend.media import probe, video_frame_fingerprint  # noqa: E402
+from backend.comfy import ComfyClient  # noqa: E402
 from scripts.download_models import SPECS  # noqa: E402
 
 FAILED: list[str] = []
@@ -258,6 +260,42 @@ mock = engines["mock"]
 check(mock.defaults()["steps"] == 1, "mock defaults are cheap")
 check(probe.__module__ == "backend.media", "media probe importable without a GPU")
 check(video_frame_fingerprint.__module__ == "backend.media", "video fingerprint helper importable")
+
+# --------------------------------------------------------------------------- #
+# ComfyUI history output compatibility
+# --------------------------------------------------------------------------- #
+client = ComfyClient("http://127.0.0.1:9")
+with tempfile.TemporaryDirectory() as tmp:
+    destination = Path(tmp)
+    video = destination / "render.mp4"
+    video.write_bytes(b"fake video")
+
+    def fake_download(filename, subfolder, kind, dest):
+        if Path(filename).suffix.lower() == ".mp4":
+            Path(dest).write_bytes(video.read_bytes())
+            return Path(dest)
+        return None
+
+    client._download = fake_download  # type: ignore[method-assign]
+    modern = {"outputs": {"14": {"videos": [{"filename": "render.mp4", "subfolder": "", "type": "output"}]}}}
+    found = client.fetch_output(modern, destination / "modern", preferred_node_id="14")
+    check(found.suffix == ".mp4", "fetches current SaveVideo video output")
+
+    legacy = {"outputs": {"14": {"images": [{"filename": "render.mp4", "subfolder": "", "type": "output"}]}}}
+    found = client.fetch_output(legacy, destination / "legacy", preferred_node_id="14")
+    check(found.suffix == ".mp4", "accepts legacy video filename in images output")
+
+    nested = {"outputs": {"14": {"ui": {"videos": [{"filename": "render.mp4", "subfolder": "", "type": "output"}]}}}}
+    found = client.fetch_output(nested, destination / "nested", preferred_node_id="14")
+    check(found.suffix == ".mp4", "accepts nested SaveVideo UI output")
+
+    still = {"outputs": {"14": {"images": [{"filename": "preview.png", "subfolder": "", "type": "output"}]}}}
+    try:
+        client.fetch_output(still, destination / "still", preferred_node_id="14")
+    except Exception as exc:
+        check("no video output" in str(exc), "rejects still-image-only output")
+    else:
+        check(False, "rejects still-image-only output")
 
 # --------------------------------------------------------------------------- #
 print(f"\n{PASSED} passed, {len(FAILED)} failed")
