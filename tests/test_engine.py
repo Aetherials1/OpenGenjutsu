@@ -24,6 +24,7 @@ from backend.engines import discover, wan_frames  # noqa: E402
 from backend.engines.base import (  # noqa: E402
     JobSpec,
     TemplateEngine,
+    _sam2_compatibility_problems,
     inject,
     placeholder_values,
 )
@@ -169,9 +170,44 @@ for directory in templates:
         check(graph[wan_node]["inputs"]["character_mask"] == ["26", 0], f"{directory.name}: tracked character mask")
         check(graph["24"]["inputs"]["bboxes"] == ["21", 3], f"{directory.name}: SAM2 follows detected subject boxes")
         check(graph["22"]["inputs"].get("retarget_padding") == 16, f"{directory.name}: pose retarget padding is explicit")
-        check(graph["23"]["inputs"].get("model") == "sam2_hiera_base_plus.safetensors", f"{directory.name}: SAM2 model uses installed filename")
+        sam_model = graph["23"]["inputs"].get("model")
+        check(sam_model == "sam2.1_hiera_base_plus.safetensors", f"{directory.name}: SAM2.1 model enables video boxes")
+        check("2.1" in sam_model and graph["23"]["inputs"].get("segmentor") == "video" and "bboxes" in graph["24"]["inputs"],
+              f"{directory.name}: SAM2 video+bbox combination is compatible")
+        check("2.0" not in sam_model, f"{directory.name}: rejects SAM2.0 video+bbox combination")
+    if directory.name in {"wan22-animate-gguf", "wan22-animate"}:
+        sam_spec = SPECS["animate-preprocess"][-1]
+        check(sam_spec["rename"] == "sam2.1_hiera_base_plus-fp16.safetensors",
+              f"{directory.name}: downloader keeps SAM2.1 fp16 filename")
+        check("sam2.1_hiera_base_plus-fp16.safetensors" in sam_spec["patterns"],
+              f"{directory.name}: downloader pins SAM2.1 checkpoint")
     if directory.name == "wan22-animate-gguf":
         check(graph["12"]["class_type"] == "TrimVideoLatent", "wan22-animate-gguf: trims conditioning latent")
+
+# --------------------------------------------------------------------------- #
+print("\nSAM2 compatibility guard")
+unsafe_sam_graph = {
+    "23": {
+        "class_type": "DownloadAndLoadSAM2Model",
+        "inputs": {"model": "sam2_hiera_base_plus.safetensors", "segmentor": "video"},
+    },
+    "24": {
+        "class_type": "Sam2Segmentation",
+        "inputs": {"sam2_model": ["23", 0], "bboxes": ["21", 3]},
+    },
+}
+check(bool(_sam2_compatibility_problems(unsafe_sam_graph)), "rejects SAM2.0 video+bbox graph")
+safe_sam_graph = {
+    "23": {
+        "class_type": "DownloadAndLoadSAM2Model",
+        "inputs": {"model": "sam2.1_hiera_base_plus.safetensors", "segmentor": "video"},
+    },
+    "24": {
+        "class_type": "Sam2Segmentation",
+        "inputs": {"sam2_model": ["23", 0], "bboxes": ["21", 3]},
+    },
+}
+check(not _sam2_compatibility_problems(safe_sam_graph), "allows SAM2.1 video+bbox graph")
 
 # --------------------------------------------------------------------------- #
 print("\nplaceholder injection")

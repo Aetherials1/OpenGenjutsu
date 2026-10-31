@@ -236,6 +236,32 @@ def _mesh_models(graph: dict[str, Any]) -> set[str]:
     return names
 
 
+def _sam2_compatibility_problems(graph: dict[str, Any]) -> list[str]:
+    """Reject SAM2.0 video graphs that pass bounding-box prompts.
+
+    The installed ComfyUI-SAM2 node raises at runtime for this combination;
+    SAM2.1 is the first supported checkpoint for video+bbox prompting.
+    """
+    problems: list[str] = []
+    for loader_id, loader in graph.items():
+        if not isinstance(loader, dict) or loader.get("class_type") != "DownloadAndLoadSAM2Model":
+            continue
+        inputs = loader.get("inputs") or {}
+        model = inputs.get("model")
+        if inputs.get("segmentor") != "video" or not isinstance(model, str) or "2.1" in model:
+            continue
+        for node_id, node in graph.items():
+            if not isinstance(node, dict) or node.get("class_type") != "Sam2Segmentation":
+                continue
+            segmentation_inputs = node.get("inputs") or {}
+            if segmentation_inputs.get("sam2_model") == [loader_id, 0] and "bboxes" in segmentation_inputs:
+                problems.append(
+                    f"SAM2 node #{node_id} passes bounding boxes to SAM2.0 video model "
+                    f"'{model}' (use a SAM2.1 checkpoint)"
+                )
+    return problems
+
+
 class TemplateEngine(Engine):
     requires_comfy = True
     requires_gpu = True
@@ -342,6 +368,8 @@ class TemplateEngine(Engine):
                 + ", ".join(missing)
                 + ". Update ComfyUI or see docs/TROUBLESHOOTING.md."
             )
+
+        problems.extend(_sam2_compatibility_problems(self.template))
 
         # Verify every input our template sets actually exists on the installed
         # node - this catches ComfyUI version drift before a render is queued.

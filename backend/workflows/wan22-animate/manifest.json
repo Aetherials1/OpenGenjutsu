@@ -49,7 +49,7 @@
     "clip_vision/clip_vision_h.safetensors",
     "detection/yolov10m.onnx",
     "detection/vitpose-l-wholebody.onnx",
-    "sam2/sam2_hiera_base_plus.safetensors"
+    "sam2/sam2.1_hiera_base_plus-fp16.safetensors"
   ],
   "speed_modes": {
     "lightning": {

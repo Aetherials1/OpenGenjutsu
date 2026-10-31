@@ -11,6 +11,12 @@ backend/workflows/wan21-vace/
 No Python needed to add, tweak or replace one. Restart the backend, or call
 `POST /api/engines/reload`, and it appears in the UI.
 
+The Wan replacement workflows use `sam2.1_hiera_base_plus.safetensors` in the
+ComfyUI node. The SAM2 node resolves that selector to its fp16 checkpoint,
+`sam2.1_hiera_base_plus-fp16.safetensors`. Do not switch this graph back to a
+SAM2 2.0 checkpoint: the video segmentor rejects bounding-box prompts on 2.0,
+which breaks source-performer tracking.
+
 ## manifest.json
 
 ```json
