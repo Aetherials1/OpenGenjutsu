@@ -144,7 +144,15 @@ def unpack_project(src: pathlib.Path):
         # zipfile is used explicitly because Colab's archive extraction can
         # omit or mishandle directory entries on some runtimes.
         with zipfile.ZipFile(src) as archive:
-            archive.extractall(tmp)
+            # Windows-created ZIPs may store backslashes as literal member
+            # characters. Normalize them for Linux/Colab before writing.
+            for member in archive.infolist():
+                name = member.filename.replace("\\\\", "/").lstrip("/")
+                if not name or name.endswith("/"):
+                    continue
+                destination = tmp / pathlib.PurePosixPath(name)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(archive.read(member))
     except Exception as exc:
         raise RuntimeError(f"Could not unpack {src}: {exc}. Re-upload the current OpenGenjutsu.zip.") from exc
 
