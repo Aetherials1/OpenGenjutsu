@@ -33,14 +33,15 @@ This notebook runs ComfyUI, OpenGenjutsu, and a Cloudflare tunnel entirely insid
 
 ## Quick start
 
-1. Select **Runtime → Change runtime type → T4 GPU** (or L4/A100).
+1. Select **Runtime → Change runtime type → A100 GPU** (40 GB recommended).
 2. Add your Hugging Face token in Colab **Secrets** as `HF_TOKEN`.
 3. Run the **Settings** cell, then the **ONE-CLICK START** cell.
-4. Open the printed link and upload your media.
+4. Wait for the readiness check, open the printed link, and upload your media.
 
-The default `animate-q4` preset uses **Wan 2.2 Animate 14B GGUF Q4**, the closest open model
-for Higgsfield-style character replacement that fits a 15 GB T4. Nothing is written to Google Drive
-unless you explicitly set `USE_DRIVE = True`.
+The default `animate` preset uses the full **Wan 2.2 Animate 14B FP8 Mix replacement** workflow.
+It is intended for an A100-class GPU and follows the reference character-replacement pipeline:
+pose/face guidance, SAM2.1 performer segmentation, background preservation, and reference-character
+conditioning. Nothing is written to Google Drive unless you explicitly set `USE_DRIVE = True`.
 """
     ),
     md(
@@ -65,16 +66,16 @@ REPO_URL = "https://github.com/Aetherials1/OpenGenjutsu.git"
 ZIP_PATH = "/content/OpenGenjutsu.zip"
 PROJECT_DIR = "/content/OpenGenjutsu"
 
-# Model preset. animate-q4 is recommended for a free 15 GB T4.
-# Options: animate-q4, animate2, vace, animate, all
-PRESET = "animate-q4"
-USE_DRIVE = False  # False keeps weights on Colab's ephemeral disk and never mounts Drive.
+# A100 defaults: full FP8 Wan 2.2 Animate Mix replacement workflow.
+# Options: animate (A100/FP8), animate-q4 (lower-VRAM/GGUF), animate2, vace, all
+PRESET = "animate"
+USE_DRIVE = False  # Set True if you want model weights cached on Google Drive.
 
 # Optional direct values. Prefer Colab Secrets for tokens.
 HF_TOKEN = ""
 GH_TOKEN = ""
 OG_TOKEN = ""  # Set a fixed UI password, or leave blank for a new random password per runtime.
-ENGINE = "auto"
+ENGINE = "wan22-animate"
 
 
 def secret(*names: str) -> str:
@@ -198,11 +199,12 @@ if USE_DRIVE:
 models_dir.mkdir(parents=True, exist_ok=True)
 os.environ["OG_MODELS_DIR"] = str(models_dir)
 
-# Install system dependencies and ComfyUI. GGUF support is always installed so the preset can be changed safely.
+# Install system dependencies and the nodes required by Wan Animate replacement.
+# The A100 uses the FP8 workflow, so the optional GGUF loader is not needed.
 run([sys.executable, "scripts/colab_setup.py", "system"], cwd=root)
 run([
     sys.executable, "scripts/colab_setup.py", "comfy",
-    "--with-gguf", "--with-animate-preprocess",
+    "--no-gguf", "--with-animate-preprocess",
 ], cwd=root)
 
 # Download with HF_TOKEN inherited from this process. It is never included in the command line.
@@ -223,7 +225,14 @@ os.environ["OG_TOKEN"] = OG_TOKEN.strip() or secrets.token_urlsafe(12)
 os.environ["OG_ENGINE"] = ENGINE
 print("\\nStarting OpenGenjutsu. Waiting for the public link...")
 serve_result = subprocess.run(
-    [sys.executable, "scripts/colab_setup.py", "serve", "--tunnel"],
+    [
+        sys.executable,
+        "scripts/colab_setup.py",
+        "serve",
+        "--profile", "big",
+        "--engine", "wan22-animate",
+        "--tunnel",
+    ],
     cwd=str(root),
     env=os.environ.copy(),
     text=True,
@@ -281,7 +290,7 @@ NOTEBOOK = {
     "cells": CELLS,
     "metadata": {
         "accelerator": "GPU",
-        "colab": {"provenance": [], "gpuType": "T4", "toc_visible": True},
+        "colab": {"provenance": [], "gpuType": "A100", "toc_visible": True},
         "kernelspec": {"display_name": "Python 3", "name": "python3"},
         "language_info": {"name": "python"},
     },
